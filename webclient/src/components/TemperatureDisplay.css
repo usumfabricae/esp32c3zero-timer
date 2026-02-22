@@ -1,0 +1,74 @@
+.temperature-display {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: var(--border-radius-xl);
+  padding: var(--spacing-xl);
+  color: white;
+  text-align: center;
+  box-shadow: var(--shadow-lg);
+  min-width: 200px;
+}
+
+.temperature-label {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  opacity: 0.9;
+  margin-bottom: var(--spacing-sm);
+}
+
+.temperature-value {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  gap: var(--spacing-xs);
+}
+
+.temperature-number {
+  font-size: 3.5rem;
+  font-weight: var(--font-weight-bold);
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
+.temperature-unit {
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-medium);
+  margin-top: var(--spacing-sm);
+  opacity: 0.9;
+}
+
+/* Mobile responsive */
+@media (max-width: 768px) {
+  .temperature-display {
+    padding: var(--spacing-lg);
+    min-width: 160px;
+  }
+  
+  .temperature-label {
+    font-size: var(--font-size-xs);
+  }
+  
+  .temperature-number {
+    font-size: 2.5rem;
+  }
+  
+  .temperature-unit {
+    font-size: var(--font-size-lg);
+    margin-top: var(--spacing-xs);
+  }
+}
+
+/* Animation for value changes */
+@keyframes pulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+}
+
+.temperature-number {
+  animation: pulse var(--transition-normal);
+}

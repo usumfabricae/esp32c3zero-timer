@@ -1,0 +1,137 @@
+.battery-gauge {
+  padding: 1.5rem;
+}
+
+.battery-container {
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+  padding: 1rem;
+}
+
+.battery-icon {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.battery-body {
+  width: 80px;
+  height: 40px;
+  border: 3px solid var(--text-primary);
+  border-radius: 4px;
+  position: relative;
+  overflow: hidden;
+  background: var(--bg-secondary);
+}
+
+.battery-body.critical {
+  border-color: #e74c3c;
+}
+
+.battery-body.low {
+  border-color: #f39c12;
+}
+
+.battery-body.medium {
+  border-color: #3498db;
+}
+
+.battery-body.good {
+  border-color: #2ecc71;
+}
+
+.battery-fill {
+  height: 100%;
+  transition: width 0.3s ease, background-color 0.3s ease;
+  background: linear-gradient(90deg, #2ecc71, #27ae60);
+}
+
+.battery-body.critical .battery-fill {
+  background: linear-gradient(90deg, #e74c3c, #c0392b);
+}
+
+.battery-body.low .battery-fill {
+  background: linear-gradient(90deg, #f39c12, #e67e22);
+}
+
+.battery-body.medium .battery-fill {
+  background: linear-gradient(90deg, #3498db, #2980b9);
+}
+
+.battery-terminal {
+  width: 6px;
+  height: 20px;
+  background: var(--text-primary);
+  border-radius: 0 2px 2px 0;
+}
+
+.battery-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.battery-percentage {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.battery-voltage {
+  font-size: 1rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.battery-status {
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.battery-status.unknown {
+  color: var(--text-secondary);
+}
+
+.battery-status.critical {
+  color: #e74c3c;
+}
+
+.battery-status.low {
+  color: #f39c12;
+}
+
+.battery-status.medium {
+  color: #3498db;
+}
+
+.battery-status.good {
+  color: #2ecc71;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .battery-container {
+    gap: 1rem;
+  }
+
+  .battery-body {
+    width: 60px;
+    height: 30px;
+  }
+
+  .battery-terminal {
+    width: 4px;
+    height: 15px;
+  }
+
+  .battery-percentage {
+    font-size: 1.5rem;
+  }
+
+  .battery-voltage {
+    font-size: 0.875rem;
+  }
+}
