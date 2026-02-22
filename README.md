@@ -515,7 +515,9 @@ idf.py menuconfig
 
 ## Web Interface
 
-A React-based web application provides full device control via Web Bluetooth API:
+A React-based web application provides full device control via Web Bluetooth API.
+
+**Live Demo:** https://usumfabricae.github.io/esp32c3zero-timer/
 
 **Features:**
 - Real-time temperature and battery monitoring
