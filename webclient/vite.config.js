@@ -1,21 +1,18 @@
-import { defineConfig } from 'vite'
+﻿import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import mkcert from 'vite-plugin-mkcert'
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [
-    react(),
-    mkcert() // Automatically creates and uses self-signed certificates
-  ],
+  plugins: [react(), mkcert()],
+  base: '/esp32c3zero-timer/',
   server: {
-    https: true, // Enable HTTPS
-    port: 3000,
-    host: '0.0.0.0', // Allow access from network
-    open: true
+    https: true,
+    port: 3000
   },
   build: {
     outDir: 'dist',
-    sourcemap: true
+    assetsDir: 'assets',
+    sourcemap: false
   }
 })
