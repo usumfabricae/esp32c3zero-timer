@@ -605,4 +605,4 @@ timer/
 
 ## License
 
-Provided as-is for educational and personal use.
+This project is licensed under the Apache-2.0 License.
