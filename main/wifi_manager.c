@@ -12,6 +12,7 @@
 #include "esp_log.h"
 #include "esp_sntp.h"
 #include "nvs_flash.h"
+#include "nvs.h"
 
 static const char *TAG = "wifi_manager";
 static EventGroupHandle_t s_wifi_event_group;
@@ -19,6 +20,11 @@ static int s_retry_num = 0;
 
 #define WIFI_CONNECTED_BIT BIT0
 #define WIFI_FAIL_BIT      BIT1
+
+// NVS keys for WiFi configuration
+#define NVS_WIFI_NAMESPACE "wifi_config"
+#define NVS_WIFI_SSID_KEY "ssid"
+#define NVS_WIFI_PASS_KEY "password"
 
 static void event_handler(void* arg, esp_event_base_t event_base,
                          int32_t event_id, void* event_data)
@@ -41,6 +47,60 @@ static void event_handler(void* arg, esp_event_base_t event_base,
         s_retry_num = 0;
         xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
     }
+}
+
+// Load WiFi SSID from NVS, fall back to config.h default
+static esp_err_t load_wifi_ssid(char *ssid, size_t max_len)
+{
+    nvs_handle_t nvs_handle;
+    esp_err_t ret = nvs_open(NVS_WIFI_NAMESPACE, NVS_READONLY, &nvs_handle);
+    if (ret != ESP_OK) {
+        ESP_LOGI(TAG, "No stored WiFi SSID found, using default from config.h: %s", WIFI_SSID);
+        strncpy(ssid, WIFI_SSID, max_len - 1);
+        ssid[max_len - 1] = '\0';
+        return ESP_OK;
+    }
+    
+    size_t len = max_len;
+    ret = nvs_get_str(nvs_handle, NVS_WIFI_SSID_KEY, ssid, &len);
+    nvs_close(nvs_handle);
+    
+    if (ret != ESP_OK) {
+        ESP_LOGI(TAG, "Failed to read WiFi SSID from NVS, using default from config.h: %s", WIFI_SSID);
+        strncpy(ssid, WIFI_SSID, max_len - 1);
+        ssid[max_len - 1] = '\0';
+        return ESP_OK;
+    }
+    
+    ESP_LOGI(TAG, "Loaded WiFi SSID from NVS: %s", ssid);
+    return ESP_OK;
+}
+
+// Load WiFi password from NVS, fall back to config.h default
+static esp_err_t load_wifi_password(char *password, size_t max_len)
+{
+    nvs_handle_t nvs_handle;
+    esp_err_t ret = nvs_open(NVS_WIFI_NAMESPACE, NVS_READONLY, &nvs_handle);
+    if (ret != ESP_OK) {
+        ESP_LOGI(TAG, "No stored WiFi password found, using default from config.h");
+        strncpy(password, WIFI_PASS, max_len - 1);
+        password[max_len - 1] = '\0';
+        return ESP_OK;
+    }
+    
+    size_t len = max_len;
+    ret = nvs_get_str(nvs_handle, NVS_WIFI_PASS_KEY, password, &len);
+    nvs_close(nvs_handle);
+    
+    if (ret != ESP_OK) {
+        ESP_LOGI(TAG, "Failed to read WiFi password from NVS, using default from config.h");
+        strncpy(password, WIFI_PASS, max_len - 1);
+        password[max_len - 1] = '\0';
+        return ESP_OK;
+    }
+    
+    ESP_LOGI(TAG, "Loaded WiFi password from NVS");
+    return ESP_OK;
 }
 
 esp_err_t wifi_init_sta(void)
@@ -74,19 +134,27 @@ esp_err_t wifi_init_sta(void)
                                                         NULL,
                                                         &instance_got_ip));
 
+    // Load WiFi credentials from NVS (or use defaults from config.h)
+    char ssid[33] = {0};
+    char password[65] = {0};
+    load_wifi_ssid(ssid, sizeof(ssid));
+    load_wifi_password(password, sizeof(password));
+
     wifi_config_t wifi_config = {
         .sta = {
-            .ssid = WIFI_SSID,
-            .password = WIFI_PASS,
             .threshold.authmode = WIFI_AUTH_WPA2_PSK,
         },
     };
+    
+    // Copy SSID and password to wifi_config
+    strncpy((char *)wifi_config.sta.ssid, ssid, sizeof(wifi_config.sta.ssid) - 1);
+    strncpy((char *)wifi_config.sta.password, password, sizeof(wifi_config.sta.password) - 1);
 
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
     ESP_ERROR_CHECK(esp_wifi_start());
 
-    ESP_LOGI(TAG, "WiFi initialization complete. Connecting to SSID: %s", WIFI_SSID);
+    ESP_LOGI(TAG, "WiFi initialization complete. Connecting to SSID: %s", ssid);
 
     return ESP_OK;
 }

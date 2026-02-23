@@ -58,6 +58,19 @@ npm run dev
 
 The application will open at `https://localhost:3000` (HTTPS required for Web Bluetooth)
 
+**Network Access:**
+The dev server is configured to listen on all network interfaces (`0.0.0.0`), allowing access from other devices on your network:
+- Local: `https://localhost:3000`
+- Network: `https://YOUR_IP:3000` (e.g., `https://192.168.1.100:3000`)
+
+**Mobile Testing:**
+1. Find your computer's IP address (use `.\show-ip.ps1` or check network settings)
+2. On your mobile device, navigate to `https://YOUR_IP:3000`
+3. Accept the self-signed certificate warning
+4. Connect to your ESP32 device via Bluetooth
+
+**Note:** All devices must be on the same network, and you may need to allow port 3000 through your firewall.
+
 ### Building for Production
 
 ```bash
@@ -109,16 +122,38 @@ webclient/
 
 1. **Power On Device:** Ensure your ESP32 is powered and within Bluetooth range
 2. **Click Connect:** Press the "Connect" button in the web interface
-3. **Select Device:** Choose "ESP32C3_Timer" from the browser's device picker
+3. **Automatic Connection:**
+   - **First Time:** Browser shows device picker → Select "ESP32C3_Timer"
+   - **Subsequent Connections:** Automatically connects to previously paired device (no picker)
+   - **Fallback:** If paired device unavailable, picker appears automatically
 4. **Wait for Data:** Initial data will be read automatically after connection
+5. **Disconnect:** Click "Disconnect" button to manually disconnect
+
+### Connection Behavior
+
+**Desktop (Chrome/Edge 85+):**
+- First connection: Shows device picker for pairing
+- Subsequent connections: Connects automatically without picker (if device advertising)
+- If device unavailable: Shows picker as fallback
+
+**Mobile (Chrome Android):**
+- First connection: Shows device picker for pairing
+- Subsequent connections: Attempts auto-connect, shows picker if device not available
+- Seamless reconnection when device wakes from sleep
+
+**Connection Button:**
+- Shows "Connect" when disconnected
+- Shows "Disconnect" when connected
+- Button color changes to indicate state (blue = connect, red = disconnect)
 
 ### Connection Notes
 
 - Device advertises for 10 seconds after boot/wake (configurable in firmware)
 - Device wakes every 30-60 seconds from deep sleep (configurable)
-- If connection fails, wait for next wake cycle and try again
+- Previously paired devices reconnect automatically (Chrome 85+)
 - Automatic reconnection attempts up to 3 times with exponential backoff
 - Connection status shown in header and notifications
+- Manual disconnect available at any time
 
 ### Troubleshooting Connection
 

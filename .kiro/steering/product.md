@@ -49,6 +49,9 @@ React-based single-page application for device control via Web Bluetooth API:
 - Temperature threshold configuration (High/Low modes)
 - Temperature sensor calibration interface
 - Connection status and notifications
+- Automatic reconnection for previously paired devices
+- Connect/Disconnect button with visual state indication
 - Responsive design for mobile and desktop
+- Network-accessible dev server for mobile testing
 - HTTPS required (Web Bluetooth API security requirement)
 - Browser support: Chrome 56+, Edge 79+, Opera 43+

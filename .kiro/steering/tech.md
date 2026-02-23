@@ -49,13 +49,16 @@ inclusion: always
 ### Architecture
 - Custom hooks pattern (useBLE.js for Web Bluetooth API)
 - Component-based UI (Dashboard, TimerProgramming, TemperatureSettings)
-- CSS modules for styling
+- CSS modules for scoped styling
 - Web Bluetooth API for BLE communication
+- Automatic device reconnection with getDevices() API
+- Smart fallback to device picker when needed
 
 ### Development Requirements
 - Node.js v14+
 - HTTPS required (Web Bluetooth API restriction)
 - Chrome 56+, Edge 79+, or Opera 43+ browsers
+- Network access on 0.0.0.0 for mobile testing
 
 ## Common Commands
 
@@ -79,8 +82,14 @@ inclusion: always
 # Install dependencies
 npm install
 
-# Run dev server (HTTPS on port 3000)
+# Run dev server (HTTPS on port 3000, accessible on network)
 npm run dev
+
+# Access locally
+https://localhost:3000
+
+# Access from mobile device (same network)
+https://YOUR_IP:3000
 
 # Build for production
 npm run build

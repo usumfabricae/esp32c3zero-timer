@@ -592,6 +592,14 @@ timer/
 
 ## Recent Changes
 
+### v1.3 - Enhanced Connection & Network Access
+- **Auto-Reconnect:** Previously paired devices connect automatically without picker (Chrome 85+)
+- **Smart Fallback:** Shows device picker if paired device unavailable (mobile-friendly)
+- **Disconnect Button:** Connect button becomes Disconnect when connected
+- **Network Access:** Dev server exposed on all interfaces for mobile testing
+- **Mobile Optimization:** Improved connection reliability on Chrome Android
+- **Connection Status:** Visual feedback with button color changes
+
 ### v1.2 - Configuration & Battery Monitoring
 - **Centralized Configuration**: All settings moved to `main/config.h`
 - **Battery Monitoring**: Added GPIO2 battery voltage monitoring with standard Battery Service (0x180F)
