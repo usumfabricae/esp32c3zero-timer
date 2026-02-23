@@ -6,6 +6,9 @@ sdkconfig
 sdkconfig.old
 dependencies.lock
 
+# Local configuration (contains WiFi credentials)
+main/config.h
+
 # IDE
 .vscode/
 .idea/
