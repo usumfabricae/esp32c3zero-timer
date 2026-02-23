@@ -108,6 +108,7 @@ export const useBLE = () => {
       
       // Try to reconnect to a previously paired device first
       let bleDevice = null;
+      let shouldTryPairedDevice = false;
       
       if (navigator.bluetooth.getDevices) {
         console.log('[BLE] Checking for previously paired devices...');
@@ -116,13 +117,35 @@ export const useBLE = () => {
           console.log(`[BLE] Found ${devices.length} previously paired device(s)`);
           
           // Find our device by name
-          bleDevice = devices.find(d => d.name === 'ESP32C3_Timer');
+          const pairedDevice = devices.find(d => d.name === 'ESP32C3_Timer');
           
-          if (bleDevice) {
-            console.log('[BLE] Found previously paired device:', bleDevice.name);
-            // Check if device is available (watchAdvertisements might help but not widely supported)
-            if (bleDevice.gatt) {
-              console.log('[BLE] Attempting to connect to previously paired device...');
+          if (pairedDevice && pairedDevice.gatt) {
+            console.log('[BLE] Found previously paired device:', pairedDevice.name);
+            console.log('[BLE] Attempting to connect to previously paired device...');
+            shouldTryPairedDevice = true;
+            
+            try {
+              // Try to connect to the paired device
+              const gattServer = await pairedDevice.gatt.connect();
+              console.log('[BLE] Successfully connected to previously paired device');
+              bleDevice = pairedDevice;
+              
+              // Set up disconnection event listener
+              bleDevice.addEventListener('gattserverdisconnected', async () => {
+                console.log('[BLE] Device disconnected');
+                setIsConnected(false);
+                setCharacteristics({});
+                await attemptReconnection(bleDevice);
+              });
+              
+              // Continue with service discovery
+              await discoverServicesAndCharacteristics(gattServer, bleDevice);
+              return; // Success - exit early
+              
+            } catch (connectErr) {
+              console.warn('[BLE] Failed to connect to previously paired device:', connectErr.message);
+              console.log('[BLE] Will show device picker instead...');
+              // Fall through to show picker
             }
           }
         } catch (err) {
@@ -130,18 +153,16 @@ export const useBLE = () => {
         }
       }
       
-      // If no previously paired device found, request new pairing
-      if (!bleDevice) {
-        console.log('[BLE] Requesting new device pairing...');
-        bleDevice = await navigator.bluetooth.requestDevice({
-          filters: [
-            { name: 'ESP32C3_Timer' },
-            { services: [SERVICE_UUID] }
-          ],
-          optionalServices: [SERVICE_UUID, BATTERY_SERVICE_UUID]
-        });
-        console.log('[BLE] Device selected:', bleDevice.name);
-      }
+      // If no previously paired device found or connection failed, request new pairing
+      console.log('[BLE] Requesting device pairing...');
+      bleDevice = await navigator.bluetooth.requestDevice({
+        filters: [
+          { name: 'ESP32C3_Timer' },
+          { services: [SERVICE_UUID] }
+        ],
+        optionalServices: [SERVICE_UUID, BATTERY_SERVICE_UUID]
+      });
+      console.log('[BLE] Device selected:', bleDevice.name);
 
       // Set up disconnection event listener with automatic reconnection
       bleDevice.addEventListener('gattserverdisconnected', async () => {
@@ -157,79 +178,86 @@ export const useBLE = () => {
       console.log('[BLE] Connecting to GATT server...');
       const gattServer = await bleDevice.gatt.connect();
       console.log('[BLE] Connected to GATT server');
-
-      // Discover service 0x00FF
-      console.log('[BLE] Discovering service 0x00FF...');
-      const service = await gattServer.getPrimaryService(SERVICE_UUID);
-      console.log('[BLE] Service discovered');
-
-      // Discover Battery Service
-      let batteryService = null;
-      try {
-        console.log('[BLE] Discovering Battery Service 0x180F...');
-        batteryService = await gattServer.getPrimaryService(BATTERY_SERVICE_UUID);
-        console.log('[BLE] Battery Service discovered');
-      } catch (err) {
-        console.warn('[BLE] Battery Service not available:', err.message);
-      }
-
-      // Discover all characteristics
-      console.log('[BLE] Discovering characteristics...');
-      const chars = {};
       
-      // Helper function to safely get characteristic
-      const getChar = async (uuid, name) => {
-        try {
-          const char = await service.getCharacteristic(uuid);
-          console.log(`[BLE] Found ${name} (${uuid.toString(16)})`);
-          return char;
-        } catch (err) {
-          console.warn(`[BLE] ${name} (${uuid.toString(16)}) not available:`, err.message);
-          return null;
-        }
-      };
+      // Discover services and characteristics
+      await discoverServicesAndCharacteristics(gattServer, bleDevice);
 
-      // Try to get each characteristic (some may be optional)
-      chars[CHAR_TEMPERATURE] = await getChar(CHAR_TEMPERATURE, 'Temperature');
-      chars[CHAR_CURRENT_TIME] = await getChar(CHAR_CURRENT_TIME, 'Current Time');
-      chars[CHAR_RELAY_STATE] = await getChar(CHAR_RELAY_STATE, 'Relay State');
-      chars[CHAR_SCHEDULE] = await getChar(CHAR_SCHEDULE, 'Schedule');
-      chars[CHAR_TEMP_THRESHOLDS] = await getChar(CHAR_TEMP_THRESHOLDS, 'Temperature Thresholds');
-      chars[CHAR_TEMP_CALIBRATION] = await getChar(CHAR_TEMP_CALIBRATION, 'Temperature Calibration');
-
-      // Get Battery Level from Battery Service if available
-      if (batteryService) {
-        try {
-          const batteryChar = await batteryService.getCharacteristic(CHAR_BATTERY_LEVEL);
-          chars[CHAR_BATTERY_LEVEL] = batteryChar;
-          console.log('[BLE] Found Battery Level (0x2A19)');
-        } catch (err) {
-          console.warn('[BLE] Battery Level (0x2A19) not available:', err.message);
-        }
-      }
-
-      // Filter out null characteristics
-      const availableChars = Object.fromEntries(
-        Object.entries(chars).filter(([_, char]) => char !== null)
-      );
-
-      console.log(`[BLE] Discovered ${Object.keys(availableChars).length} characteristics`);
-
-      setDevice(bleDevice);
-      setServer(gattServer);
-      setCharacteristics(chars);
-      setIsConnected(true);
-      setIsConnecting(false);
-      setReconnectAttempts(0); // Reset reconnect attempts on successful connection
-
-      console.log('[BLE] Connection complete');
     } catch (err) {
       console.error('[BLE] Connection error:', err);
       setError(err.message);
       setIsConnecting(false);
       setIsConnected(false);
     }
-  }, []);
+  }, [attemptReconnection]);
+
+  // Helper function to discover services and characteristics
+  const discoverServicesAndCharacteristics = async (gattServer, bleDevice) => {
+    // Discover service 0x00FF
+    console.log('[BLE] Discovering service 0x00FF...');
+    const service = await gattServer.getPrimaryService(SERVICE_UUID);
+    console.log('[BLE] Service discovered');
+
+    // Discover Battery Service
+    let batteryService = null;
+    try {
+      console.log('[BLE] Discovering Battery Service 0x180F...');
+      batteryService = await gattServer.getPrimaryService(BATTERY_SERVICE_UUID);
+      console.log('[BLE] Battery Service discovered');
+    } catch (err) {
+      console.warn('[BLE] Battery Service not available:', err.message);
+    }
+
+    // Discover all characteristics
+    console.log('[BLE] Discovering characteristics...');
+    const chars = {};
+    
+    // Helper function to safely get characteristic
+    const getChar = async (uuid, name) => {
+      try {
+        const char = await service.getCharacteristic(uuid);
+        console.log(`[BLE] Found ${name} (${uuid.toString(16)})`);
+        return char;
+      } catch (err) {
+        console.warn(`[BLE] ${name} (${uuid.toString(16)}) not available:`, err.message);
+        return null;
+      }
+    };
+
+    // Try to get each characteristic (some may be optional)
+    chars[CHAR_TEMPERATURE] = await getChar(CHAR_TEMPERATURE, 'Temperature');
+    chars[CHAR_CURRENT_TIME] = await getChar(CHAR_CURRENT_TIME, 'Current Time');
+    chars[CHAR_RELAY_STATE] = await getChar(CHAR_RELAY_STATE, 'Relay State');
+    chars[CHAR_SCHEDULE] = await getChar(CHAR_SCHEDULE, 'Schedule');
+    chars[CHAR_TEMP_THRESHOLDS] = await getChar(CHAR_TEMP_THRESHOLDS, 'Temperature Thresholds');
+    chars[CHAR_TEMP_CALIBRATION] = await getChar(CHAR_TEMP_CALIBRATION, 'Temperature Calibration');
+
+    // Get Battery Level from Battery Service if available
+    if (batteryService) {
+      try {
+        const batteryChar = await batteryService.getCharacteristic(CHAR_BATTERY_LEVEL);
+        chars[CHAR_BATTERY_LEVEL] = batteryChar;
+        console.log('[BLE] Found Battery Level (0x2A19)');
+      } catch (err) {
+        console.warn('[BLE] Battery Level (0x2A19) not available:', err.message);
+      }
+    }
+
+    // Filter out null characteristics
+    const availableChars = Object.fromEntries(
+      Object.entries(chars).filter(([_, char]) => char !== null)
+    );
+
+    console.log(`[BLE] Discovered ${Object.keys(availableChars).length} characteristics`);
+
+    setDevice(bleDevice);
+    setServer(gattServer);
+    setCharacteristics(chars);
+    setIsConnected(true);
+    setIsConnecting(false);
+    setReconnectAttempts(0); // Reset reconnect attempts on successful connection
+
+    console.log('[BLE] Connection complete');
+  };
 
   const disconnect = useCallback(async () => {
     if (device && device.gatt.connected) {
