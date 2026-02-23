@@ -8,7 +8,8 @@ export default defineConfig({
   base: '/esp32c3zero-timer/',
   server: {
     https: true,
-    port: 3000
+    port: 3000,
+    host: '0.0.0.0' // Expose on all network interfaces
   },
   build: {
     outDir: 'dist',

@@ -225,26 +225,49 @@ static void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param
         ESP_LOGI(GATTS_TAG, "Advertising stopped");
         break;
     case ESP_GAP_BLE_PASSKEY_REQ_EVT:
-        ESP_LOGI(GATTS_TAG, "Passkey request event");
+        ESP_LOGI(GATTS_TAG, "========================================");
+        ESP_LOGI(GATTS_TAG, "PASSKEY REQUEST EVENT");
+        ESP_LOGI(GATTS_TAG, "Phone is asking for passkey");
+        ESP_LOGI(GATTS_TAG, "Replying with: %06lu", (unsigned long)current_passkey);
+        ESP_LOGI(GATTS_TAG, "========================================");
         esp_ble_passkey_reply(param->ble_security.ble_req.bd_addr, true, current_passkey);
         break;
     case ESP_GAP_BLE_NC_REQ_EVT:
-        ESP_LOGI(GATTS_TAG, "Numeric comparison request: %lu", (unsigned long)param->ble_security.key_notif.passkey);
+        ESP_LOGI(GATTS_TAG, "========================================");
+        ESP_LOGI(GATTS_TAG, "NUMERIC COMPARISON REQUEST");
+        ESP_LOGI(GATTS_TAG, "Passkey to compare: %06lu", (unsigned long)param->ble_security.key_notif.passkey);
+        ESP_LOGI(GATTS_TAG, "Our passkey: %06lu", (unsigned long)current_passkey);
+        ESP_LOGI(GATTS_TAG, "Match: %s", (param->ble_security.key_notif.passkey == current_passkey) ? "YES" : "NO");
+        ESP_LOGI(GATTS_TAG, "Auto-confirming..."); 
+        ESP_LOGI(GATTS_TAG, "========================================");
         esp_ble_confirm_reply(param->ble_security.ble_req.bd_addr, true);
         break;
     case ESP_GAP_BLE_PASSKEY_NOTIF_EVT:
-        ESP_LOGI(GATTS_TAG, "Passkey notification: %lu", (unsigned long)param->ble_security.key_notif.passkey);
+        ESP_LOGI(GATTS_TAG, "========================================");
+        ESP_LOGI(GATTS_TAG, "PASSKEY NOTIFICATION (Display on ESP32)");
+        ESP_LOGI(GATTS_TAG, "BLE PAIRING PASSKEY: %06lu", (unsigned long)param->ble_security.key_notif.passkey);
+        ESP_LOGI(GATTS_TAG, "Enter this passkey on your phone/laptop");
+        ESP_LOGI(GATTS_TAG, "Configured passkey: %06lu", (unsigned long)current_passkey);
+        ESP_LOGI(GATTS_TAG, "========================================");
         break;
     case ESP_GAP_BLE_KEY_EVT:
-        ESP_LOGI(GATTS_TAG, "Key type: %s", param->ble_security.ble_key.key_type);
+        ESP_LOGI(GATTS_TAG, "Key event - key_type: %d", param->ble_security.ble_key.key_type);
+        break;
+    case ESP_GAP_BLE_SEC_REQ_EVT:
+        ESP_LOGI(GATTS_TAG, "Security request event from peer");
+        esp_ble_gap_security_rsp(param->ble_security.ble_req.bd_addr, true);
         break;
     case ESP_GAP_BLE_AUTH_CMPL_EVT:
         if (param->ble_security.auth_cmpl.success) {
-            ESP_LOGI(GATTS_TAG, "Authentication success! Device paired");
+            ESP_LOGI(GATTS_TAG, "========================================");
+            ESP_LOGI(GATTS_TAG, "Authentication SUCCESS! Device paired");
+            ESP_LOGI(GATTS_TAG, "========================================");
             ble_authenticated = true;
             led_status_set(LED_STATUS_BLE_CONNECTED);
         } else {
-            ESP_LOGE(GATTS_TAG, "Authentication failed, reason: 0x%x", param->ble_security.auth_cmpl.fail_reason);
+            ESP_LOGE(GATTS_TAG, "========================================");
+            ESP_LOGE(GATTS_TAG, "Authentication FAILED, reason: 0x%x", param->ble_security.auth_cmpl.fail_reason);
+            ESP_LOGE(GATTS_TAG, "========================================");
             ble_authenticated = false;
         }
         break;
@@ -812,12 +835,17 @@ static void gatts_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_t gatts_
     case ESP_GATTS_CONNECT_EVT:
         ESP_LOGI(GATTS_TAG, "Client connected, conn_id %d", param->connect.conn_id);
         ble_connected = true;
-        ble_authenticated = true;  // Auto-authenticate with bonding/encryption
+        ble_authenticated = false;  // Wait for authentication to complete
+        
         // Set LED to blue - BLE connected
         led_status_set(LED_STATUS_BLE_CONNECTED);
         
         // Stop advertising when connected
         esp_ble_gap_stop_advertising();
+        
+        // Initiate security pairing process
+        ESP_LOGI(GATTS_TAG, "Initiating security pairing...");
+        esp_ble_set_encryption(param->connect.remote_bda, ESP_BLE_SEC_ENCRYPT_MITM);
         break;
         
     case ESP_GATTS_DISCONNECT_EVT:
@@ -880,14 +908,15 @@ esp_err_t ble_server_init(void)
     }
 
     // Set BLE security parameters
-    // Using encryption and bonding without MITM (no passkey prompt)
-    // Security is enforced at characteristic level with encryption requirement
-    esp_ble_auth_req_t auth_req = ESP_LE_AUTH_REQ_SC_BOND;  // Secure Connections + Bonding
-    esp_ble_io_cap_t iocap = ESP_IO_CAP_NONE;  // No input/output
+    // Using encryption, bonding, and MITM protection with passkey display
+    // The device will display a passkey that must be confirmed on the connecting device
+    esp_ble_auth_req_t auth_req = ESP_LE_AUTH_REQ_SC_MITM_BOND;  // Secure Connections + MITM + Bonding
+    esp_ble_io_cap_t iocap = ESP_IO_CAP_OUT;  // Display only (device shows passkey)
     uint8_t key_size = 16;
     uint8_t init_key = ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK;
     uint8_t rsp_key = ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK;
     uint8_t auth_option = ESP_BLE_ONLY_ACCEPT_SPECIFIED_AUTH_DISABLE;
+    uint32_t passkey = current_passkey;
     
     esp_ble_gap_set_security_param(ESP_BLE_SM_AUTHEN_REQ_MODE, &auth_req, sizeof(uint8_t));
     esp_ble_gap_set_security_param(ESP_BLE_SM_IOCAP_MODE, &iocap, sizeof(uint8_t));
@@ -895,8 +924,9 @@ esp_err_t ble_server_init(void)
     esp_ble_gap_set_security_param(ESP_BLE_SM_ONLY_ACCEPT_SPECIFIED_SEC_AUTH, &auth_option, sizeof(uint8_t));
     esp_ble_gap_set_security_param(ESP_BLE_SM_SET_INIT_KEY, &init_key, sizeof(uint8_t));
     esp_ble_gap_set_security_param(ESP_BLE_SM_SET_RSP_KEY, &rsp_key, sizeof(uint8_t));
+    esp_ble_gap_set_security_param(ESP_BLE_SM_SET_STATIC_PASSKEY, &passkey, sizeof(uint32_t));
     
-    ESP_LOGI(GATTS_TAG, "BLE security configured: Auth=Bond+Encryption (automatic pairing)");
+    ESP_LOGI(GATTS_TAG, "BLE security configured: Auth=Bond+MITM+Encryption (passkey: %06lu)", (unsigned long)current_passkey);
 
     ret = esp_ble_gap_register_callback(gap_event_handler);
     if (ret) {

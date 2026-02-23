@@ -177,9 +177,14 @@
 
 /**
  * Default BLE pairing passkey
- * 6-digit numeric code used for device pairing
+ * 6-digit numeric code displayed during device pairing
+ * The device will show this passkey in the serial monitor during pairing
+ * User must enter this passkey on their phone/laptop to complete pairing
  * Can be changed via BLE after first pairing
  * Range: 000000 to 999999
+ * 
+ * IMPORTANT: This passkey will be displayed in the serial monitor when
+ * a device attempts to pair. Monitor the serial output to see the passkey.
  */
 #define DEFAULT_PASSKEY 123456
 
