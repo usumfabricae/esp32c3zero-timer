@@ -5,7 +5,8 @@ function Sidebar({ isOpen, currentView, onNavigate }) {
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: '📊' },
     { id: 'timer', label: 'Timer Programming', icon: '⏰' },
-    { id: 'settings', label: 'Temperature Settings', icon: '🌡️' }
+    { id: 'temperature', label: 'Temperature Settings', icon: '🌡️' },
+    { id: 'config', label: 'Device Configuration', icon: '⚙️' }
   ];
 
   return (

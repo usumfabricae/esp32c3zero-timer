@@ -10,6 +10,9 @@ const CHAR_RELAY_STATE = 0xFF02;
 const CHAR_SCHEDULE = 0xFF05;
 const CHAR_TEMP_THRESHOLDS = 0xFF06;
 const CHAR_TEMP_CALIBRATION = 0xFF07;
+const CHAR_WIFI_SSID = 0xFF08;
+const CHAR_WIFI_PASSWORD = 0xFF09;
+const CHAR_BLE_PASSKEY = 0xFF0A;
 const CHAR_BATTERY_LEVEL = 0x2A19;
 
 export const useBLE = () => {
@@ -27,7 +30,8 @@ export const useBLE = () => {
     schedule: null,
     thresholds: null,
     batteryLevel: null,
-    batteryVoltage: null
+    batteryVoltage: null,
+    wifiSsid: null
   });
   const [operationQueue, setOperationQueue] = useState([]);
   const [reconnectAttempts, setReconnectAttempts] = useState(0);
@@ -75,6 +79,9 @@ export const useBLE = () => {
         chars[CHAR_SCHEDULE] = await getChar(CHAR_SCHEDULE, 'Schedule');
         chars[CHAR_TEMP_THRESHOLDS] = await getChar(CHAR_TEMP_THRESHOLDS, 'Temperature Thresholds');
         chars[CHAR_TEMP_CALIBRATION] = await getChar(CHAR_TEMP_CALIBRATION, 'Temperature Calibration');
+        chars[CHAR_WIFI_SSID] = await getChar(CHAR_WIFI_SSID, 'WiFi SSID');
+        chars[CHAR_WIFI_PASSWORD] = await getChar(CHAR_WIFI_PASSWORD, 'WiFi Password');
+        chars[CHAR_BLE_PASSKEY] = await getChar(CHAR_BLE_PASSKEY, 'BLE Passkey');
 
         // Get Battery Service
         try {
@@ -230,6 +237,9 @@ export const useBLE = () => {
     chars[CHAR_SCHEDULE] = await getChar(CHAR_SCHEDULE, 'Schedule');
     chars[CHAR_TEMP_THRESHOLDS] = await getChar(CHAR_TEMP_THRESHOLDS, 'Temperature Thresholds');
     chars[CHAR_TEMP_CALIBRATION] = await getChar(CHAR_TEMP_CALIBRATION, 'Temperature Calibration');
+    chars[CHAR_WIFI_SSID] = await getChar(CHAR_WIFI_SSID, 'WiFi SSID');
+    chars[CHAR_WIFI_PASSWORD] = await getChar(CHAR_WIFI_PASSWORD, 'WiFi Password');
+    chars[CHAR_BLE_PASSKEY] = await getChar(CHAR_BLE_PASSKEY, 'BLE Passkey');
 
     // Get Battery Level from Battery Service if available
     if (batteryService) {
@@ -532,6 +542,95 @@ export const useBLE = () => {
     }
   }, [isConnected, characteristics]);
 
+  // WiFi and BLE configuration operations
+  const readWifiSsid = useCallback(async () => {
+    if (!isConnected || !characteristics[CHAR_WIFI_SSID]) {
+      throw new Error('Not connected or characteristic not available');
+    }
+
+    try {
+      console.log('[BLE] Reading WiFi SSID...');
+      const value = await characteristics[CHAR_WIFI_SSID].readValue();
+      const decoder = new TextDecoder('utf-8');
+      const ssid = decoder.decode(value);
+      console.log('[BLE] WiFi SSID:', ssid);
+      
+      setDeviceData(prev => ({ ...prev, wifiSsid: ssid }));
+      return ssid;
+    } catch (err) {
+      console.error('[BLE] Failed to read WiFi SSID:', err);
+      throw err;
+    }
+  }, [isConnected, characteristics]);
+
+  const writeWifiSsid = useCallback(async (ssid) => {
+    if (!isConnected || !characteristics[CHAR_WIFI_SSID]) {
+      throw new Error('Not connected or characteristic not available');
+    }
+
+    if (!ssid || ssid.length === 0 || ssid.length > 32) {
+      throw new Error('Invalid SSID length (must be 1-32 characters)');
+    }
+
+    try {
+      console.log('[BLE] Writing WiFi SSID:', ssid);
+      const encoder = new TextEncoder();
+      const data = encoder.encode(ssid);
+      await characteristics[CHAR_WIFI_SSID].writeValue(data);
+      console.log('[BLE] WiFi SSID written successfully');
+      
+      setDeviceData(prev => ({ ...prev, wifiSsid: ssid }));
+      return true;
+    } catch (err) {
+      console.error('[BLE] Failed to write WiFi SSID:', err);
+      throw err;
+    }
+  }, [isConnected, characteristics]);
+
+  const writeWifiPassword = useCallback(async (password) => {
+    if (!isConnected || !characteristics[CHAR_WIFI_PASSWORD]) {
+      throw new Error('Not connected or characteristic not available');
+    }
+
+    if (!password || password.length === 0 || password.length > 64) {
+      throw new Error('Invalid password length (must be 1-64 characters)');
+    }
+
+    try {
+      console.log('[BLE] Writing WiFi Password...');
+      const encoder = new TextEncoder();
+      const data = encoder.encode(password);
+      await characteristics[CHAR_WIFI_PASSWORD].writeValue(data);
+      console.log('[BLE] WiFi Password written successfully');
+      return true;
+    } catch (err) {
+      console.error('[BLE] Failed to write WiFi Password:', err);
+      throw err;
+    }
+  }, [isConnected, characteristics]);
+
+  const writeBlePasskey = useCallback(async (passkey) => {
+    if (!isConnected || !characteristics[CHAR_BLE_PASSKEY]) {
+      throw new Error('Not connected or characteristic not available');
+    }
+
+    if (!/^\d{6}$/.test(passkey)) {
+      throw new Error('Invalid passkey format (must be exactly 6 digits)');
+    }
+
+    try {
+      console.log('[BLE] Writing BLE Passkey...');
+      const encoder = new TextEncoder();
+      const data = encoder.encode(passkey);
+      await characteristics[CHAR_BLE_PASSKEY].writeValue(data);
+      console.log('[BLE] BLE Passkey written successfully');
+      return true;
+    } catch (err) {
+      console.error('[BLE] Failed to write BLE Passkey:', err);
+      throw err;
+    }
+  }, [isConnected, characteristics]);
+
   // Notification setup and handling
   const enableNotifications = useCallback(async (characteristicUuid, handler) => {
     if (!isConnected || !characteristics[characteristicUuid]) {
@@ -679,10 +778,14 @@ export const useBLE = () => {
     readSchedule,
     readTemperatureThresholds,
     readBatteryLevel,
+    readWifiSsid,
     writeRelayState,
     writeSchedule,
     writeTemperatureThresholds,
     writeTemperatureCalibration,
+    writeWifiSsid,
+    writeWifiPassword,
+    writeBlePasskey,
     setupNotifications,
     queueOperation,
     executeQueuedOperations

@@ -23,7 +23,10 @@
 #define GATTS_SCHEDULE_CHAR_UUID 0xFF05
 #define GATTS_TEMP_CHAR_UUID 0xFF06
 #define GATTS_TEMP_CAL_CHAR_UUID 0xFF07  // Temperature calibration
-#define GATTS_NUM_HANDLE     25  // Increased for additional characteristics
+#define GATTS_WIFI_SSID_CHAR_UUID 0xFF08  // WiFi SSID (read/write)
+#define GATTS_WIFI_PASS_CHAR_UUID 0xFF09  // WiFi Password (write only)
+#define GATTS_BLE_PASSKEY_CHAR_UUID 0xFF0A  // BLE Passkey (write only)
+#define GATTS_NUM_HANDLE     35  // Increased for additional characteristics
 
 // Battery Service (Standard Bluetooth SIG)
 #define BATTERY_SERVICE_UUID 0x180F
@@ -46,6 +49,11 @@
 #define NVS_BLE_NAMESPACE "ble_security"
 #define NVS_PASSKEY_KEY "passkey"
 
+// NVS keys for WiFi configuration
+#define NVS_WIFI_NAMESPACE "wifi_config"
+#define NVS_WIFI_SSID_KEY "ssid"
+#define NVS_WIFI_PASS_KEY "password"
+
 #define PROFILE_APP_ID 0
 #define GATTS_DEMO_CHAR_VAL_LEN_MAX 512  // Maximum attribute length for long reads
 #define GATTS_CHUNK_SIZE 22  // Safe chunk size for MTU=23 (23 - 1 byte ATT opcode)
@@ -59,6 +67,9 @@ static uint16_t passkey_char_handle = 0;
 static uint16_t schedule_char_handle = 0;
 static uint16_t temp_char_handle = 0;
 static uint16_t temp_cal_char_handle = 0;
+static uint16_t wifi_ssid_char_handle = 0;
+static uint16_t wifi_pass_char_handle = 0;
+static uint16_t ble_passkey_char_handle = 0;
 static uint16_t service_handle = 0;
 
 // Battery service handles
@@ -191,6 +202,75 @@ static esp_err_t save_passkey_to_nvs(uint32_t passkey)
         ret = nvs_commit(nvs_handle);
         if (ret == ESP_OK) {
             ESP_LOGI(GATTS_TAG, "Passkey saved to NVS: %lu", (unsigned long)passkey);
+        }
+    }
+    
+    nvs_close(nvs_handle);
+    return ret;
+}
+
+// WiFi configuration functions
+static esp_err_t load_wifi_ssid_from_nvs(char *ssid, size_t max_len)
+{
+    nvs_handle_t nvs_handle;
+    esp_err_t ret = nvs_open(NVS_WIFI_NAMESPACE, NVS_READONLY, &nvs_handle);
+    if (ret != ESP_OK) {
+        ESP_LOGI(GATTS_TAG, "No stored WiFi SSID found, using default from config.h");
+        strncpy(ssid, WIFI_SSID, max_len - 1);
+        ssid[max_len - 1] = '\0';
+        return ESP_OK;
+    }
+    
+    size_t len = max_len;
+    ret = nvs_get_str(nvs_handle, NVS_WIFI_SSID_KEY, ssid, &len);
+    nvs_close(nvs_handle);
+    
+    if (ret != ESP_OK) {
+        ESP_LOGI(GATTS_TAG, "Failed to read WiFi SSID, using default from config.h");
+        strncpy(ssid, WIFI_SSID, max_len - 1);
+        ssid[max_len - 1] = '\0';
+        return ESP_OK;
+    }
+    
+    ESP_LOGI(GATTS_TAG, "Loaded WiFi SSID from NVS: %s", ssid);
+    return ESP_OK;
+}
+
+static esp_err_t save_wifi_ssid_to_nvs(const char *ssid)
+{
+    nvs_handle_t nvs_handle;
+    esp_err_t ret = nvs_open(NVS_WIFI_NAMESPACE, NVS_READWRITE, &nvs_handle);
+    if (ret != ESP_OK) {
+        ESP_LOGE(GATTS_TAG, "Failed to open NVS for WiFi SSID storage");
+        return ret;
+    }
+    
+    ret = nvs_set_str(nvs_handle, NVS_WIFI_SSID_KEY, ssid);
+    if (ret == ESP_OK) {
+        ret = nvs_commit(nvs_handle);
+        if (ret == ESP_OK) {
+            ESP_LOGI(GATTS_TAG, "WiFi SSID saved to NVS: %s", ssid);
+        }
+    }
+    
+    nvs_close(nvs_handle);
+    return ret;
+}
+
+static esp_err_t save_wifi_password_to_nvs(const char *password)
+{
+    nvs_handle_t nvs_handle;
+    esp_err_t ret = nvs_open(NVS_WIFI_NAMESPACE, NVS_READWRITE, &nvs_handle);
+    if (ret != ESP_OK) {
+        ESP_LOGE(GATTS_TAG, "Failed to open NVS for WiFi password storage");
+        return ret;
+    }
+    
+    ret = nvs_set_str(nvs_handle, NVS_WIFI_PASS_KEY, password);
+    if (ret == ESP_OK) {
+        ret = nvs_commit(nvs_handle);
+        if (ret == ESP_OK) {
+            ESP_LOGI(GATTS_TAG, "WiFi password saved to NVS: %s", password);
         }
     }
     
@@ -416,6 +496,51 @@ static void gatts_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_t gatts_
             temp_cal_char_handle = param->add_char.attr_handle;
             ESP_LOGI(GATTS_TAG, "Temperature calibration characteristic added");
             
+            // Add WiFi SSID characteristic (read/write)
+            esp_ble_gatts_add_char(service_handle, &(esp_bt_uuid_t){
+                .len = ESP_UUID_LEN_16,
+                .uuid.uuid16 = GATTS_WIFI_SSID_CHAR_UUID,
+            }, ESP_GATT_PERM_READ | ESP_GATT_PERM_WRITE,
+            ESP_GATT_CHAR_PROP_BIT_READ | ESP_GATT_CHAR_PROP_BIT_WRITE,
+            &(esp_attr_value_t){
+                .attr_max_len = 32,  // Max SSID length
+                .attr_len = 0,
+                .attr_value = NULL,
+            }, NULL);
+        } else if (param->add_char.char_uuid.uuid.uuid16 == GATTS_WIFI_SSID_CHAR_UUID) {
+            wifi_ssid_char_handle = param->add_char.attr_handle;
+            ESP_LOGI(GATTS_TAG, "WiFi SSID characteristic added (0xFF08)");
+            
+            // Add WiFi Password characteristic (write only)
+            esp_ble_gatts_add_char(service_handle, &(esp_bt_uuid_t){
+                .len = ESP_UUID_LEN_16,
+                .uuid.uuid16 = GATTS_WIFI_PASS_CHAR_UUID,
+            }, ESP_GATT_PERM_WRITE,
+            ESP_GATT_CHAR_PROP_BIT_WRITE,
+            &(esp_attr_value_t){
+                .attr_max_len = 64,  // Max WiFi password length
+                .attr_len = 0,
+                .attr_value = NULL,
+            }, NULL);
+        } else if (param->add_char.char_uuid.uuid.uuid16 == GATTS_WIFI_PASS_CHAR_UUID) {
+            wifi_pass_char_handle = param->add_char.attr_handle;
+            ESP_LOGI(GATTS_TAG, "WiFi Password characteristic added (0xFF09)");
+            
+            // Add BLE Passkey characteristic (write only)
+            esp_ble_gatts_add_char(service_handle, &(esp_bt_uuid_t){
+                .len = ESP_UUID_LEN_16,
+                .uuid.uuid16 = GATTS_BLE_PASSKEY_CHAR_UUID,
+            }, ESP_GATT_PERM_WRITE,
+            ESP_GATT_CHAR_PROP_BIT_WRITE,
+            &(esp_attr_value_t){
+                .attr_max_len = 6,  // 6-digit passkey
+                .attr_len = 0,
+                .attr_value = NULL,
+            }, NULL);
+        } else if (param->add_char.char_uuid.uuid.uuid16 == GATTS_BLE_PASSKEY_CHAR_UUID) {
+            ble_passkey_char_handle = param->add_char.attr_handle;
+            ESP_LOGI(GATTS_TAG, "BLE Passkey characteristic added (0xFF0A)");
+            
             // Add standard temperature characteristic (Environmental Sensing)
             esp_ble_gatts_add_char(service_handle, &(esp_bt_uuid_t){
                 .len = ESP_UUID_LEN_16,
@@ -637,6 +762,14 @@ static void gatts_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_t gatts_
                 // Advance offset for next read
                 schedule_read_offset += chunk_size;
             }
+        } else if (param->read.handle == wifi_ssid_char_handle) {
+            // Read WiFi SSID from NVS
+            char ssid[33] = {0};
+            load_wifi_ssid_from_nvs(ssid, sizeof(ssid));
+            
+            rsp.attr_value.len = strlen(ssid);
+            memcpy(rsp.attr_value.value, ssid, rsp.attr_value.len);
+            ESP_LOGI(GATTS_TAG, "Sent WiFi SSID: %s", ssid);
         }
         
         esp_ble_gatts_send_response(gatts_if, param->read.conn_id, param->read.trans_id, ESP_GATT_OK, &rsp);
@@ -824,6 +957,105 @@ static void gatts_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_t gatts_
                 }
             } else {
                 ESP_LOGW(GATTS_TAG, "Invalid calibration data length: %d (expected 2)", param->write.len);
+                if (param->write.need_rsp) {
+                    esp_ble_gatts_send_response(gatts_if, param->write.conn_id, param->write.trans_id, 
+                                               ESP_GATT_INVALID_ATTR_LEN, NULL);
+                }
+            }
+        } else if (param->write.handle == wifi_ssid_char_handle) {
+            // WiFi SSID write: string up to 32 bytes
+            if (param->write.len > 0 && param->write.len <= 32) {
+                char ssid[33] = {0};
+                memcpy(ssid, param->write.value, param->write.len);
+                ssid[param->write.len] = '\0';
+                
+                if (save_wifi_ssid_to_nvs(ssid) == ESP_OK) {
+                    ESP_LOGI(GATTS_TAG, "WiFi SSID updated: %s", ssid);
+                    if (param->write.need_rsp) {
+                        esp_ble_gatts_send_response(gatts_if, param->write.conn_id, param->write.trans_id, ESP_GATT_OK, NULL);
+                    }
+                } else {
+                    ESP_LOGW(GATTS_TAG, "Failed to save WiFi SSID");
+                    if (param->write.need_rsp) {
+                        esp_ble_gatts_send_response(gatts_if, param->write.conn_id, param->write.trans_id, 
+                                                   ESP_GATT_ERROR, NULL);
+                    }
+                }
+            } else {
+                ESP_LOGW(GATTS_TAG, "Invalid WiFi SSID length: %d (expected 1-32)", param->write.len);
+                if (param->write.need_rsp) {
+                    esp_ble_gatts_send_response(gatts_if, param->write.conn_id, param->write.trans_id, 
+                                               ESP_GATT_INVALID_ATTR_LEN, NULL);
+                }
+            }
+        } else if (param->write.handle == wifi_pass_char_handle) {
+            // WiFi Password write: string up to 64 bytes (write only, logged for debugging)
+            if (param->write.len > 0 && param->write.len <= 64) {
+                char password[65] = {0};
+                memcpy(password, param->write.value, param->write.len);
+                password[param->write.len] = '\0';
+                
+                if (save_wifi_password_to_nvs(password) == ESP_OK) {
+                    ESP_LOGI(GATTS_TAG, "WiFi Password updated: %s", password);
+                    if (param->write.need_rsp) {
+                        esp_ble_gatts_send_response(gatts_if, param->write.conn_id, param->write.trans_id, ESP_GATT_OK, NULL);
+                    }
+                } else {
+                    ESP_LOGW(GATTS_TAG, "Failed to save WiFi password");
+                    if (param->write.need_rsp) {
+                        esp_ble_gatts_send_response(gatts_if, param->write.conn_id, param->write.trans_id, 
+                                                   ESP_GATT_ERROR, NULL);
+                    }
+                }
+            } else {
+                ESP_LOGW(GATTS_TAG, "Invalid WiFi password length: %d (expected 1-64)", param->write.len);
+                if (param->write.need_rsp) {
+                    esp_ble_gatts_send_response(gatts_if, param->write.conn_id, param->write.trans_id, 
+                                               ESP_GATT_INVALID_ATTR_LEN, NULL);
+                }
+            }
+        } else if (param->write.handle == ble_passkey_char_handle) {
+            // BLE Passkey write: 6-digit numeric string (write only, logged for debugging)
+            if (param->write.len == 6) {
+                char passkey_str[7] = {0};
+                memcpy(passkey_str, param->write.value, 6);
+                passkey_str[6] = '\0';
+                
+                // Convert string to uint32_t
+                uint32_t new_passkey = 0;
+                bool valid = true;
+                for (int i = 0; i < 6; i++) {
+                    if (passkey_str[i] >= '0' && passkey_str[i] <= '9') {
+                        new_passkey = new_passkey * 10 + (passkey_str[i] - '0');
+                    } else {
+                        valid = false;
+                        break;
+                    }
+                }
+                
+                if (valid && new_passkey <= 999999) {
+                    if (save_passkey_to_nvs(new_passkey) == ESP_OK) {
+                        current_passkey = new_passkey;
+                        ESP_LOGI(GATTS_TAG, "BLE Passkey updated: %06lu", (unsigned long)new_passkey);
+                        if (param->write.need_rsp) {
+                            esp_ble_gatts_send_response(gatts_if, param->write.conn_id, param->write.trans_id, ESP_GATT_OK, NULL);
+                        }
+                    } else {
+                        ESP_LOGW(GATTS_TAG, "Failed to save BLE passkey");
+                        if (param->write.need_rsp) {
+                            esp_ble_gatts_send_response(gatts_if, param->write.conn_id, param->write.trans_id, 
+                                                       ESP_GATT_ERROR, NULL);
+                        }
+                    }
+                } else {
+                    ESP_LOGW(GATTS_TAG, "Invalid BLE passkey format: %s", passkey_str);
+                    if (param->write.need_rsp) {
+                        esp_ble_gatts_send_response(gatts_if, param->write.conn_id, param->write.trans_id, 
+                                                   ESP_GATT_INVALID_ATTR_LEN, NULL);
+                    }
+                }
+            } else {
+                ESP_LOGW(GATTS_TAG, "Invalid BLE passkey length: %d (expected 6)", param->write.len);
                 if (param->write.need_rsp) {
                     esp_ble_gatts_send_response(gatts_if, param->write.conn_id, param->write.trans_id, 
                                                ESP_GATT_INVALID_ATTR_LEN, NULL);

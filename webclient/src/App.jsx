@@ -6,6 +6,7 @@ import Sidebar from './components/Sidebar.jsx'
 import Dashboard from './components/Dashboard.jsx'
 import TimerProgramming from './components/TimerProgramming.jsx'
 import TemperatureSettings from './components/TemperatureSettings.jsx'
+import Settings from './components/Settings.jsx'
 import Notification from './components/Notification.jsx'
 
 function App() {
@@ -67,7 +68,8 @@ function App() {
         { name: 'relay state', fn: () => ble.readRelayState() },
         { name: 'schedule', fn: () => ble.readSchedule() },
         { name: 'temperature thresholds', fn: () => ble.readTemperatureThresholds() },
-        { name: 'battery level', fn: () => ble.readBatteryLevel() }
+        { name: 'battery level', fn: () => ble.readBatteryLevel() },
+        { name: 'WiFi SSID', fn: () => ble.readWifiSsid() }
       ];
 
       for (const operation of readOperations) {
@@ -245,7 +247,16 @@ function App() {
       <main className="main-content">
         {currentView === 'dashboard' && <Dashboard ble={ble} />}
         {currentView === 'timer' && <TimerProgramming ble={ble} />}
-        {currentView === 'settings' && <TemperatureSettings ble={ble} />}
+        {currentView === 'temperature' && <TemperatureSettings ble={ble} />}
+        {currentView === 'config' && (
+          <Settings 
+            isConnected={ble.isConnected}
+            wifiSsid={ble.deviceData.wifiSsid}
+            onUpdateWifiSsid={ble.writeWifiSsid}
+            onUpdateWifiPassword={ble.writeWifiPassword}
+            onUpdateBlePasskey={ble.writeBlePasskey}
+          />
+        )}
       </main>
       
       {globalNotification && (
