@@ -30,10 +30,12 @@ static void check_scheduler_and_update_relay(void)
     time(&now);
     localtime_r(&now, &timeinfo);
     
-    // Check scheduler and control relay based on temperature (only if time is synced and no manual override)
-    if (time_synced && timeinfo.tm_year > (2024 - 1900)) {
-        // Skip scheduler if manual override is active
-        if (!gpio_is_manual_override_active()) {
+    // Skip scheduler if manual override is active
+    if (!gpio_is_manual_override_active()) 
+    {
+        // Check scheduler and control relay based on temperature (only if time is synced and no manual override)
+        if (time_synced && timeinfo.tm_year > (2024 - 1900)) 
+        {
             int16_t current_temp = gpio_read_temperature();
             bool should_be_on = scheduler_should_relay_be_on(current_temp);
             uint8_t current_relay_state = gpio_get_relay();

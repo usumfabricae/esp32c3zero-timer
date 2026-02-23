@@ -124,13 +124,22 @@ Relay mechanically holds state during deep sleep (all GPIOs LOW).
 
 #### 0xFF02 - Relay Control
 - **Type:** Read, Write
-- **Format:** 1 byte (0=OFF, 1=ON)
-- **Write:** `[0x01]` = ON, `[0x00]` = OFF
-- **Read:** Returns current state
-- **Manual Override:** Writing to this characteristic activates a 1-hour manual override
-  - Scheduler is disabled for 1 hour after writing
-  - After 1 hour, automatic scheduler control resumes
-  - Useful for temporary manual control without changing schedule
+- **Write Format:** ASCII string "x,y"
+  - `x` = relay state (0=OFF, 1=ON)
+  - `y` = duration in 15-minute units (e.g., 4 = 60 minutes)
+  - Example: `"0,4"` = Turn relay OFF for 60 minutes (4 × 15 min)
+  - Example: `"1,8"` = Turn relay ON for 120 minutes (8 × 15 min)
+  - Maximum duration: 96 units (24 hours)
+- **Read Format:** ASCII string "x,hh:mm" or "x"
+  - If manual override active: `"x,hh:mm"` where hh:mm is the override end time
+  - If no override: `"x"` where x is current relay state
+  - Example: `"1,14:30"` = Relay ON, override expires at 14:30
+  - Example: `"0"` = Relay OFF, no override (scheduler active)
+- **Manual Override:** Writing activates manual override for specified duration
+  - Scheduler is disabled until override expires
+  - Override end time is calculated from current time + duration
+  - After expiration, automatic scheduler control resumes
+  - Override persists across deep sleep cycles
 
 #### 0xFF04 - Passkey Change
 - **Type:** Write

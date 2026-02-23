@@ -30,13 +30,13 @@
  * WiFi network SSID (network name)
  * The device will connect to this WiFi network for NTP time synchronization
  */
-#define WIFI_SSID "MYWIFI"
+#define WIFI_SSID "NETNIAERO"
 
 /**
  * WiFi network password
  * Leave empty "" for open networks (not recommended)
  */
-#define WIFI_PASS "PASSWORD"
+#define WIFI_PASS "t3s0r1n0b3ll0bello"
 
 /**
  * Maximum number of WiFi connection retry attempts

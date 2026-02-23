@@ -4,6 +4,7 @@
 #include "esp_err.h"
 #include <stdint.h>
 #include <stdbool.h>
+#include <time.h>
 
 // Initialize all GPIO pins
 esp_err_t gpio_manager_init(void);
@@ -13,12 +14,13 @@ esp_err_t gpio_manager_init(void);
 // state=1 (ON): GPIO6/7=HIGH, GPIO4/5=LOW for 1s, then all=0
 // state=0 (OFF): GPIO6/7=LOW, GPIO4/5=HIGH for 1s, then all=0
 void gpio_set_relay(uint8_t state);
-void gpio_set_relay_manual(uint8_t state);  // Manual override (disables scheduler for 1 hour)
+void gpio_set_relay_manual(uint8_t state, uint16_t duration_minutes);  // Manual override with custom duration
 uint8_t gpio_get_relay(void);
 
 // Manual override control
 bool gpio_is_manual_override_active(void);  // Check if manual override is active
 void gpio_clear_manual_override(void);      // Clear manual override (for testing)
+time_t gpio_get_manual_override_endtime(void);  // Get override end time (0 if not active)
 
 // Temperature calibration
 esp_err_t gpio_calibrate_temperature(int16_t actual_temp_celsius);  // Add calibration point

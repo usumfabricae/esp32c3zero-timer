@@ -65,12 +65,34 @@ class DataFormatter {
 
   // Encoders
   /**
-   * Encode relay state to 1-byte array
+   * Encode relay state with duration to ASCII string format "x,y"
    * @param {boolean} state - Relay state (true=ON, false=OFF)
-   * @returns {Uint8Array} 1-byte array (0x00 for OFF, 0x01 for ON)
+   * @param {number} durationMinutes - Duration in minutes (default 60)
+   * @returns {Uint8Array} ASCII string "x,y" where x=state, y=duration in 15-min units
    */
-  static encodeRelayState(state) {
-    return new Uint8Array([state ? 0x01 : 0x00])
+  static encodeRelayState(state, durationMinutes = 60) {
+    const stateValue = state ? 1 : 0;
+    const durationUnits = Math.round(durationMinutes / 15);
+    const str = `${stateValue},${durationUnits}`;
+    const encoder = new TextEncoder();
+    return encoder.encode(str);
+  }
+
+  /**
+   * Decode relay state from ASCII string format
+   * @param {DataView} dataView - DataView containing ASCII string
+   * @returns {Object} Object with state (boolean), overrideEndTime (string or null)
+   */
+  static decodeRelayState(dataView) {
+    const decoder = new TextDecoder('utf-8');
+    const str = decoder.decode(dataView);
+    
+    // Format can be "x" or "x,hh:mm"
+    const parts = str.split(',');
+    const state = parts[0] === '1';
+    const overrideEndTime = parts.length > 1 ? parts[1] : null;
+    
+    return { state, overrideEndTime };
   }
 
   /**

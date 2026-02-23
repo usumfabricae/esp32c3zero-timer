@@ -47,7 +47,7 @@ function Dashboard({ ble }) {
   const todaySchedule = getTodaySchedule();
   const currentHour = new Date().getHours();
 
-  const handleRelayToggle = async (newState) => {
+  const handleRelayToggle = async (newState, durationMinutes) => {
     // Show loading notification
     setNotification({
       type: 'loading',
@@ -55,12 +55,12 @@ function Dashboard({ ble }) {
     });
 
     try {
-      await ble.writeRelayState(newState);
+      await ble.writeRelayState(newState, durationMinutes);
       
       // Show success notification
       setNotification({
         type: 'success',
-        message: `Relay turned ${newState ? 'ON' : 'OFF'} successfully`,
+        message: `Relay turned ${newState ? 'ON' : 'OFF'} for ${durationMinutes} minutes`,
         duration: 3000
       });
 
@@ -68,7 +68,7 @@ function Dashboard({ ble }) {
       setTimeout(() => {
         setNotification({
           type: 'info',
-          message: 'Manual override active. Automatic scheduling suspended for 1 hour.',
+          message: `Manual override active for ${durationMinutes} minutes. Automatic scheduling suspended.`,
           duration: 5000
         });
       }, 3500);
@@ -148,6 +148,7 @@ function Dashboard({ ble }) {
         <div className="dashboard-section relay-section">
           <RelayGauge
             state={deviceData.relayState}
+            overrideEndTime={deviceData.relayOverrideEndTime}
             onToggle={handleRelayToggle}
             disabled={!isConnected}
           />

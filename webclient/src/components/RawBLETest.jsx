@@ -91,10 +91,10 @@ const RawBLETest = () => {
     }
   };
 
-  const writeRelay = async (state) => {
+  const writeRelay = async (state, durationMinutes = 60) => {
     try {
       const stateStr = state ? 'ON' : 'OFF';
-      log(`Writing relay ${stateStr}...`);
+      log(`Writing relay ${stateStr} for ${durationMinutes} minutes...`);
       
       const char = ble.characteristics[0xFF02];
       if (!char) {
@@ -102,10 +102,15 @@ const RawBLETest = () => {
         return;
       }
 
-      const value = new Uint8Array([state ? 0x01 : 0x00]);
+      // New format: "x,y" where x=state, y=duration in 15-min units
+      const durationUnits = Math.round(durationMinutes / 15);
+      const str = `${state ? 1 : 0},${durationUnits}`;
+      const encoder = new TextEncoder();
+      const value = encoder.encode(str);
+      
       await char.writeValue(value);
       
-      log(`Relay ${stateStr} written successfully`);
+      log(`Relay ${stateStr} written successfully (${durationMinutes} min)`);
     } catch (err) {
       log(`ERROR writing relay: ${err.message}`);
     }

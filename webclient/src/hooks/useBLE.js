@@ -23,6 +23,7 @@ export const useBLE = () => {
     temperature: null,
     currentTime: null,
     relayState: null,
+    relayOverrideEndTime: null,
     schedule: null,
     thresholds: null,
     batteryLevel: null,
@@ -260,11 +261,16 @@ export const useBLE = () => {
     try {
       console.log('[BLE] Reading relay state...');
       const value = await characteristics[CHAR_RELAY_STATE].readValue();
-      const relayState = value.getUint8(0) === 0x01;
-      console.log('[BLE] Relay state:', relayState ? 'ON' : 'OFF');
+      const { state, overrideEndTime } = DataFormatter.decodeRelayState(value);
+      console.log('[BLE] Relay state:', state ? 'ON' : 'OFF', 
+                  overrideEndTime ? `(override until ${overrideEndTime})` : '(no override)');
       
-      setDeviceData(prev => ({ ...prev, relayState }));
-      return relayState;
+      setDeviceData(prev => ({ 
+        ...prev, 
+        relayState: state,
+        relayOverrideEndTime: overrideEndTime
+      }));
+      return { state, overrideEndTime };
     } catch (err) {
       console.error('[BLE] Failed to read relay state:', err);
       throw err;
@@ -374,24 +380,28 @@ export const useBLE = () => {
   }, [isConnected, characteristics]);
 
   // Write operations with DataFormatter
-  const writeRelayState = useCallback(async (state) => {
+  const writeRelayState = useCallback(async (state, durationMinutes = 60) => {
     if (!isConnected || !characteristics[CHAR_RELAY_STATE]) {
       throw new Error('Not connected or characteristic not available');
     }
 
     try {
-      console.log('[BLE] Writing relay state:', state ? 'ON' : 'OFF');
-      const data = DataFormatter.encodeRelayState(state);
+      console.log('[BLE] Writing relay state:', state ? 'ON' : 'OFF', `for ${durationMinutes} minutes`);
+      const data = DataFormatter.encodeRelayState(state, durationMinutes);
       await characteristics[CHAR_RELAY_STATE].writeValue(data);
       console.log('[BLE] Relay state written successfully');
       
       setDeviceData(prev => ({ ...prev, relayState: state }));
+      
+      // Re-read to get the override end time
+      setTimeout(() => readRelayState(), 100);
+      
       return true;
     } catch (err) {
       console.error('[BLE] Failed to write relay state:', err);
       throw err;
     }
-  }, [isConnected, characteristics]);
+  }, [isConnected, characteristics, readRelayState]);
 
   const writeSchedule = useCallback(async (day, scheduleString) => {
     if (!isConnected || !characteristics[CHAR_SCHEDULE]) {

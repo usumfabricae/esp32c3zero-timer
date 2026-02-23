@@ -11,7 +11,8 @@ A React-based single-page web application for connecting to and controlling the 
   - Current time display
   
 - **Device Control:**
-  - Manual relay control with 1-hour override
+  - Manual relay control with configurable duration (15 min to 4 hours)
+  - Override end time display when manual control is active
   - Weekly schedule programming (7 days × 24 hours)
   - Temperature threshold configuration (High/Low modes)
   - Temperature sensor calibration
@@ -142,6 +143,9 @@ webclient/
 The main dashboard displays:
 - **Temperature Display:** Current temperature with visual gauge
 - **Relay Gauge:** Current relay state with manual control toggle
+  - Duration selector (15 min, 30 min, 1 hour, 2 hours, 3 hours, 4 hours)
+  - Override end time display when manual control is active
+  - Toggle switch for ON/OFF control
 - **Battery Gauge:** Battery level percentage and voltage
 - **Temperature Thresholds:** Current High/Low temperature settings
 - **Today's Schedule:** Visual grid showing today's hourly schedule
@@ -180,6 +184,10 @@ The web interface communicates with these BLE characteristics:
 
 ### Custom Characteristics
 - **0xFF02** - Relay Control (Read/Write)
+  - Write format: ASCII string "x,y" where x=state (0/1), y=duration in 15-min units
+  - Read format: ASCII string "x,hh:mm" (with override) or "x" (no override)
+  - Example write: "1,4" = Turn ON for 60 minutes
+  - Example read: "1,14:30" = ON, override until 14:30
 - **0xFF05** - Schedule Configuration (Read/Write)
 - **0xFF06** - Temperature Thresholds (Read/Write)
 - **0xFF07** - Temperature Calibration (Write)
@@ -193,6 +201,9 @@ The `dataFormatter.js` utility handles all BLE data conversions:
 - **Temperature:** 16-bit signed integer (0.01°C resolution)
 - **Time:** 10-byte Bluetooth SIG Current Time format
 - **Battery:** 8-bit unsigned integer (percentage)
+- **Relay State:** ASCII string format
+  - Write: "x,y" where x=state (0/1), y=duration in 15-min units
+  - Read: "x,hh:mm" (with override) or "x" (no override)
 - **Schedule:** 25-byte format (day + 24 characters)
 - **Thresholds:** 4-byte format (2x 16-bit temperatures)
 
@@ -333,5 +344,6 @@ For issues and questions:
 ## License
 
 See main project LICENSE file.
- 
+
+ 
  

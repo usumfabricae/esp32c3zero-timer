@@ -432,14 +432,15 @@ int16_t gpio_read_temperature(void)
     return temp;
 }
 
-void gpio_set_relay_manual(uint8_t state)
+void gpio_set_relay_manual(uint8_t state, uint16_t duration_minutes)
 {
-    // Set manual override timestamp (1 hour from now)
+    // Set manual override timestamp based on duration
     time_t now;
     time(&now);
-    manual_override_until = now + MANUAL_OVERRIDE_DURATION_SEC;
+    manual_override_until = now + (duration_minutes * 60);
     
-    ESP_LOGI(GPIO_TAG, "Manual override activated for 1 hour (until %ld)", (long)manual_override_until);
+    ESP_LOGI(GPIO_TAG, "Manual override activated: state=%d, duration=%d minutes (until %ld)", 
+             state, duration_minutes, (long)manual_override_until);
     
     // Save manual override timestamp to NVS
     nvs_handle_t nvs_handle;
@@ -471,6 +472,14 @@ bool gpio_is_manual_override_active(void)
         return false;
     }
     
+    // Calculate remaining time
+    time_t remaining_sec = manual_override_until - now;
+    int remaining_min = remaining_sec / 60;
+    int remaining_sec_part = remaining_sec % 60;
+    
+    ESP_LOGI(GPIO_TAG, "Manual override active: %d seconds remaining (%d min %d sec)", 
+             (int)remaining_sec, remaining_min, remaining_sec_part);
+    
     return true;  // Override still active
 }
 
@@ -489,6 +498,24 @@ void gpio_clear_manual_override(void)
             nvs_close(nvs_handle);
         }
     }
+}
+
+time_t gpio_get_manual_override_endtime(void)
+{
+    if (manual_override_until == 0) {
+        return 0;  // No override active
+    }
+    
+    time_t now;
+    time(&now);
+    
+    if (now >= manual_override_until) {
+        // Override expired
+        manual_override_until = 0;
+        return 0;
+    }
+    
+    return manual_override_until;
 }
 
 esp_err_t gpio_calibrate_temperature(int16_t actual_temp_celsius)

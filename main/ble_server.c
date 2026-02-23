@@ -491,11 +491,32 @@ static void gatts_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_t gatts_
         rsp.attr_value.handle = param->read.handle;
         
         if (param->read.handle == relay_char_handle) {
-            // Return the stored relay state
+            // Return format: "x,hh:mm" where x=relay state, hh:mm=override end time
+            // If no override active, just return the relay state "x"
             uint8_t relay_state = gpio_get_relay();
-            rsp.attr_value.len = 1;
-            rsp.attr_value.value[0] = relay_state;
-            ESP_LOGI(GATTS_TAG, "Sent relay state to client: %d", relay_state);
+            time_t override_endtime = gpio_get_manual_override_endtime();
+            
+            if (override_endtime > 0) {
+                // Manual override active - format with end time
+                struct tm timeinfo;
+                localtime_r(&override_endtime, &timeinfo);
+                
+                char response[16];
+                snprintf(response, sizeof(response), "%d,%02d:%02d", 
+                         relay_state, timeinfo.tm_hour, timeinfo.tm_min);
+                
+                rsp.attr_value.len = strlen(response);
+                memcpy(rsp.attr_value.value, response, rsp.attr_value.len);
+                ESP_LOGI(GATTS_TAG, "Sent relay state with override: %s", response);
+            } else {
+                // No override - just return state
+                char response[8];
+                snprintf(response, sizeof(response), "%d", relay_state);
+                
+                rsp.attr_value.len = strlen(response);
+                memcpy(rsp.attr_value.value, response, rsp.attr_value.len);
+                ESP_LOGI(GATTS_TAG, "Sent relay state (no override): %s", response);
+            }
         } else if (param->read.handle == temp_char_handle) {
             // Read temperature thresholds
             scheduler_config_t config;
@@ -604,13 +625,49 @@ static void gatts_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_t gatts_
                  param->write.len, param->write.len > 0 ? param->write.value[0] : 0);
         
         if (param->write.handle == relay_char_handle) {
-            if (param->write.len == 1) {
-                uint8_t relay_state = param->write.value[0] ? 1 : 0;
-                gpio_set_relay_manual(relay_state);  // Use manual override (1 hour)
-                ESP_LOGI(GATTS_TAG, "Relay state changed to: %d (manual override for 1 hour)", relay_state);
+            // Relay write format: "x,y" where x=state (0/1), y=duration in 15-minute units
+            // Example: "0,4" = relay OFF for 60 minutes (4 * 15)
+            if (param->write.len >= 3) {
+                // Parse format: "x,y"
+                char buffer[16];
+                size_t len = (param->write.len < sizeof(buffer) - 1) ? param->write.len : sizeof(buffer) - 1;
+                memcpy(buffer, param->write.value, len);
+                buffer[len] = '\0';
                 
+                uint8_t relay_state = 0;
+                uint16_t duration_units = 0;
+                
+                if (sscanf(buffer, "%hhu,%hu", &relay_state, &duration_units) == 2) {
+                    // Convert 15-minute units to minutes
+                    uint16_t duration_minutes = duration_units * 15;
+                    
+                    if (relay_state <= 1 && duration_minutes > 0 && duration_minutes <= 1440) {  // Max 24 hours
+                        gpio_set_relay_manual(relay_state, duration_minutes);
+                        ESP_LOGI(GATTS_TAG, "Relay manual override: state=%d, duration=%d min (%d units)", 
+                                 relay_state, duration_minutes, duration_units);
+                        
+                        if (param->write.need_rsp) {
+                            esp_ble_gatts_send_response(gatts_if, param->write.conn_id, param->write.trans_id, ESP_GATT_OK, NULL);
+                        }
+                    } else {
+                        ESP_LOGW(GATTS_TAG, "Invalid relay parameters: state=%d, duration=%d", relay_state, duration_minutes);
+                        if (param->write.need_rsp) {
+                            esp_ble_gatts_send_response(gatts_if, param->write.conn_id, param->write.trans_id, 
+                                                       ESP_GATT_INVALID_ATTR_LEN, NULL);
+                        }
+                    }
+                } else {
+                    ESP_LOGW(GATTS_TAG, "Failed to parse relay command: %s", buffer);
+                    if (param->write.need_rsp) {
+                        esp_ble_gatts_send_response(gatts_if, param->write.conn_id, param->write.trans_id, 
+                                                   ESP_GATT_INVALID_ATTR_LEN, NULL);
+                    }
+                }
+            } else {
+                ESP_LOGW(GATTS_TAG, "Invalid relay write length: %d (expected >= 3)", param->write.len);
                 if (param->write.need_rsp) {
-                    esp_ble_gatts_send_response(gatts_if, param->write.conn_id, param->write.trans_id, ESP_GATT_OK, NULL);
+                    esp_ble_gatts_send_response(gatts_if, param->write.conn_id, param->write.trans_id, 
+                                               ESP_GATT_INVALID_ATTR_LEN, NULL);
                 }
             }
         } else if (param->write.handle == passkey_char_handle) {
