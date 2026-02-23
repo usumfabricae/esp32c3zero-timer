@@ -167,6 +167,30 @@ function App() {
     }
   };
 
+  // Handle disconnection button click
+  const handleDisconnect = async () => {
+    setGlobalNotification({
+      type: 'info',
+      message: 'Disconnecting...',
+      duration: 2000
+    });
+
+    try {
+      await ble.disconnect();
+      setGlobalNotification({
+        type: 'success',
+        message: 'Disconnected successfully',
+        duration: 3000
+      });
+    } catch (error) {
+      console.error('Disconnection failed:', error);
+      setGlobalNotification({
+        type: 'error',
+        message: `Disconnection failed: ${error.message}`
+      });
+    }
+  };
+
   // Handle navigation
   const handleNavigate = (view) => {
     setCurrentView(view);
@@ -209,6 +233,7 @@ function App() {
         isConnected={ble.isConnected}
         onMenuClick={handleMenuToggle}
         onConnect={handleConnect}
+        onDisconnect={handleDisconnect}
       />
       
       <Sidebar 

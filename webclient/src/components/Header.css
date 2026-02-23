@@ -110,6 +110,14 @@
   background-color: var(--primary-hover);
 }
 
+.connect-button.disconnect {
+  background-color: var(--error-color);
+}
+
+.connect-button.disconnect:hover {
+  background-color: #c0392b;
+}
+
 /* Mobile responsive (< 768px) */
 @media (max-width: 768px) {
   .header {

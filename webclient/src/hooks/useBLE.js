@@ -106,13 +106,42 @@ export const useBLE = () => {
     try {
       console.log('[BLE] Requesting device...');
       
-      // Request device with name "ESP32C3_Timer"
-      const bleDevice = await navigator.bluetooth.requestDevice({
-        filters: [{ name: 'ESP32C3_Timer' }],
-        optionalServices: [SERVICE_UUID, BATTERY_SERVICE_UUID]
-      });
-
-      console.log('[BLE] Device found:', bleDevice.name);
+      // Try to reconnect to a previously paired device first
+      let bleDevice = null;
+      
+      if (navigator.bluetooth.getDevices) {
+        console.log('[BLE] Checking for previously paired devices...');
+        try {
+          const devices = await navigator.bluetooth.getDevices();
+          console.log(`[BLE] Found ${devices.length} previously paired device(s)`);
+          
+          // Find our device by name
+          bleDevice = devices.find(d => d.name === 'ESP32C3_Timer');
+          
+          if (bleDevice) {
+            console.log('[BLE] Found previously paired device:', bleDevice.name);
+            // Check if device is available (watchAdvertisements might help but not widely supported)
+            if (bleDevice.gatt) {
+              console.log('[BLE] Attempting to connect to previously paired device...');
+            }
+          }
+        } catch (err) {
+          console.warn('[BLE] getDevices() failed or not supported:', err.message);
+        }
+      }
+      
+      // If no previously paired device found, request new pairing
+      if (!bleDevice) {
+        console.log('[BLE] Requesting new device pairing...');
+        bleDevice = await navigator.bluetooth.requestDevice({
+          filters: [
+            { name: 'ESP32C3_Timer' },
+            { services: [SERVICE_UUID] }
+          ],
+          optionalServices: [SERVICE_UUID, BATTERY_SERVICE_UUID]
+        });
+        console.log('[BLE] Device selected:', bleDevice.name);
+      }
 
       // Set up disconnection event listener with automatic reconnection
       bleDevice.addEventListener('gattserverdisconnected', async () => {

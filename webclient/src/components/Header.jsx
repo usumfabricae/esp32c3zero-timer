@@ -1,7 +1,7 @@
 import React from 'react'
 import './Header.css'
 
-function Header({ isConnected, onMenuClick, onConnect }) {
+function Header({ isConnected, onMenuClick, onConnect, onDisconnect }) {
   return (
     <header className="header">
       <button 
@@ -22,14 +22,12 @@ function Header({ isConnected, onMenuClick, onConnect }) {
           </span>
         </div>
         
-        {!isConnected && (
-          <button 
-            className="connect-button" 
-            onClick={onConnect}
-          >
-            Connect
-          </button>
-        )}
+        <button 
+          className={`connect-button ${isConnected ? 'disconnect' : ''}`}
+          onClick={isConnected ? onDisconnect : onConnect}
+        >
+          {isConnected ? 'Disconnect' : 'Connect'}
+        </button>
       </div>
     </header>
   )
