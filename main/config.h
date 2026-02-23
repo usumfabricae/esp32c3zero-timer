@@ -49,13 +49,39 @@
 // ============================================================================
 
 /**
+ * Light sleep duration in seconds
+ * Device will stay in light sleep mode (with BLE active) for this duration
+ * before entering deep sleep if no BLE connection is established
+ * During light sleep: BLE remains active, CPU frequency reduced, faster wake-up
+ * Recommended: 10-30 seconds
+ */
+#define LIGHT_SLEEP_DURATION_SEC 10
+
+/**
  * Deep sleep duration in seconds
  * The device will wake up periodically to check schedule and update relay
+ * During deep sleep: Full power down, BLE deinitialized, device resets on wake
  * Recommended: 30-60 seconds for normal operation
  * Lower values = more responsive but higher power consumption
  * Higher values = lower power consumption but less responsive
  */
 #define DEEP_SLEEP_DURATION_SEC 30
+
+/**
+ * CPU frequency during active operation (MHz)
+ * ESP32-C3 supports: 160, 80, 40, 20, 10 MHz
+ * Lower frequency = less power consumption, slower processing
+ * For BLE + simple operations: 40 MHz is sufficient
+ * Recommended: 40 MHz for low power, 80 MHz for balance, 160 MHz for performance
+ */
+#define PM_MAX_CPU_FREQ_MHZ 40
+
+/**
+ * CPU frequency during light sleep (MHz)
+ * Lower frequency = less power consumption during idle
+ * Recommended: 10 MHz
+ */
+#define PM_MIN_CPU_FREQ_MHZ 10
 
 /**
  * BLE advertising timeout in seconds

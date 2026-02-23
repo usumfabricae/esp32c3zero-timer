@@ -5,6 +5,7 @@
 #include "esp_log.h"
 #include "esp_wifi.h"
 #include "esp_sleep.h"
+#include "esp_pm.h"
 #include "nvs_flash.h"
 #include "config.h"
 #include "wifi_manager.h"
@@ -17,6 +18,9 @@ static const char *TAG = "main";
 
 // Global flag to track if time was successfully synced
 bool time_synced = false;
+
+// Track light sleep start time (not in RTC memory, resets on deep sleep)
+static uint32_t light_sleep_start_time = 0;
 
 // Relay hysteresis tracking
 static time_t last_relay_switch_time = 0;
@@ -126,6 +130,21 @@ void app_main(void)
 {
     ESP_LOGI(TAG, "ESP32-C3 Project Started!");
     ESP_LOGI(TAG, "Device name: %s", DEVICE_NAME);
+    
+    // Configure Power Management early (before BLE initialization)
+    esp_pm_config_t pm_config = {
+        .max_freq_mhz = PM_MAX_CPU_FREQ_MHZ,
+        .min_freq_mhz = PM_MIN_CPU_FREQ_MHZ,
+        .light_sleep_enable = true
+    };
+    esp_err_t pm_ret = esp_pm_configure(&pm_config);
+    if (pm_ret == ESP_OK) {
+        ESP_LOGI(TAG, "Power Management configured: max=%dMHz, min=%dMHz, light_sleep=enabled",
+                 PM_MAX_CPU_FREQ_MHZ, PM_MIN_CPU_FREQ_MHZ);
+    } else {
+        ESP_LOGW(TAG, "Power Management configuration failed: %s (continuing without PM)", 
+                 esp_err_to_name(pm_ret));
+    }
     
     // Check wakeup reason
     esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
@@ -301,21 +320,46 @@ void app_main(void)
         vTaskDelay(pdMS_TO_TICKS(100));
     }
     
-    // No connection or disconnected, check scheduler before sleeping
-    ESP_LOGI(TAG, "Checking scheduler before deep sleep...");
-    check_scheduler_and_update_relay();
+    // Record start time for light sleep period
+    light_sleep_start_time = xTaskGetTickCount() * portTICK_PERIOD_MS / 1000;
     
-    ESP_LOGI(TAG, "No BLE connection, entering deep sleep for %d seconds", DEEP_SLEEP_DURATION_SEC);
-    
-    // Deinitialize BLE to save power
-    ble_server_deinit();
-    
-    // Turn off LED
-    led_status_set(LED_STATUS_OFF);
-    
-    // Configure timer wakeup
-    esp_sleep_enable_timer_wakeup(DEEP_SLEEP_DURATION_SEC * 1000000ULL);
-    
-    // Enter deep sleep
-    esp_deep_sleep_start();
+    // Main loop: stay in light sleep, then transition to deep sleep
+    while (1) {
+        vTaskDelay(pdMS_TO_TICKS(1000));  // Check every second
+        
+        // If BLE is connected, reset the light sleep timer
+        if (ble_is_connected()) {
+            light_sleep_start_time = xTaskGetTickCount() * portTICK_PERIOD_MS / 1000;
+            
+            // Update scheduler while connected
+            check_scheduler_and_update_relay();
+        } else {
+            // Not connected - check if light sleep period has elapsed
+            uint32_t current_time = xTaskGetTickCount() * portTICK_PERIOD_MS / 1000;
+            uint32_t elapsed = current_time - light_sleep_start_time;
+            
+            if (elapsed >= LIGHT_SLEEP_DURATION_SEC) {
+                ESP_LOGI(TAG, "Light sleep period ended (%lu seconds), entering deep sleep", elapsed);
+                
+                // Check scheduler one last time before deep sleep
+                check_scheduler_and_update_relay();
+                
+                // Deinitialize BLE before deep sleep
+                ESP_LOGI(TAG, "Deinitializing BLE for deep sleep");
+                ble_server_deinit();
+                
+                // Turn off LED
+                led_status_set(LED_STATUS_OFF);
+                
+                // Configure deep sleep timer wakeup
+                esp_sleep_enable_timer_wakeup(DEEP_SLEEP_DURATION_SEC * 1000000ULL);
+                
+                ESP_LOGI(TAG, "Entering deep sleep for %d seconds", DEEP_SLEEP_DURATION_SEC);
+                vTaskDelay(pdMS_TO_TICKS(100));  // Allow log to flush
+                
+                // Enter deep sleep (never returns - device will reset)
+                esp_deep_sleep_start();
+            }
+        }
+    }
 }
