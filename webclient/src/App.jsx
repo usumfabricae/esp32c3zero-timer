@@ -8,6 +8,7 @@ import TimerProgramming from './components/TimerProgramming.jsx'
 import TemperatureSettings from './components/TemperatureSettings.jsx'
 import Settings from './components/Settings.jsx'
 import Notification from './components/Notification.jsx'
+import PWAInstallPrompt from './components/PWAInstallPrompt.jsx'
 
 function App() {
   // Initialize useBLE hook
@@ -275,6 +276,8 @@ function App() {
           onClose={() => {}}
         />
       )}
+      
+      <PWAInstallPrompt />
     </div>
   )
 }
