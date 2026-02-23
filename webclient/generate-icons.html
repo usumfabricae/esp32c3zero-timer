@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Generate PWA Icons</title>
+</head>
+<body>
+    <h2>PWA Icon Generator</h2>
+    <p>Open browser console and save the generated images</p>
+    <canvas id="canvas192" width="192" height="192"></canvas>
+    <canvas id="canvas512" width="512" height="512"></canvas>
+    
+    <script>
+        function generateIcon(canvasId, size) {
+            const canvas = document.getElementById(canvasId);
+            const ctx = canvas.getContext('2d');
+            
+            // Background gradient
+            const gradient = ctx.createLinearGradient(0, 0, size, size);
+            gradient.addColorStop(0, '#646cff');
+            gradient.addColorStop(1, '#4a5fd8');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, size, size);
+            
+            // Draw relay symbol
+            ctx.strokeStyle = '#ffffff';
+            ctx.fillStyle = '#ffffff';
+            ctx.lineWidth = size * 0.04;
+            
+            // Coil
+            const centerX = size / 2;
+            const centerY = size / 2;
+            const coilRadius = size * 0.15;
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, coilRadius, 0, Math.PI * 2);
+            ctx.stroke();
+            
+            // Contacts
+            const contactY = centerY - size * 0.25;
+            ctx.beginPath();
+            ctx.moveTo(centerX - size * 0.2, contactY);
+            ctx.lineTo(centerX + size * 0.1, contactY - size * 0.1);
+            ctx.stroke();
+            
+            // Terminals
+            ctx.beginPath();
+            ctx.arc(centerX - size * 0.2, contactY, size * 0.03, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(centerX + size * 0.2, contactY, size * 0.03, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Temperature symbol
+            const tempX = centerX;
+            const tempY = centerY + size * 0.25;
+            ctx.font = `bold ${size * 0.2}px Arial`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('°C', tempX, tempY);
+            
+            // Download link
+            canvas.toBlob((blob) => {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `icon-${size}.png`;
+                a.textContent = `Download ${size}x${size} icon`;
+                a.style.display = 'block';
+                a.style.margin = '10px';
+                document.body.appendChild(a);
+            });
+        }
+        
+        generateIcon('canvas192', 192);
+        generateIcon('canvas512', 512);
+    </script>
+</body>
+</html>

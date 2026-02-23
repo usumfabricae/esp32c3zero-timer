@@ -1,0 +1,5 @@
+{
+  "appId": "net.superfede.BleWebInterface",
+  "appName": "ble-web-interface",
+  "webDir": "dist"
+}

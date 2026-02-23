@@ -15,5 +15,7 @@ export default defineConfig({
     outDir: 'dist',
     assetsDir: 'assets',
     sourcemap: false
-  }
+  },
+  // Ensure PWA files are copied to dist
+  publicDir: 'public'
 })

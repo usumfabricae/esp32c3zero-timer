@@ -15,3 +15,6 @@ main/config.h
 *.swp
 *.swo
 *~
+
+# Webclient Android build (Capacitor generated)
+webclient/android/

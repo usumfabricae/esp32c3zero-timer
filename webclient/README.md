@@ -342,8 +342,29 @@ server {
 - [ ] Multiple device support
 - [ ] Export/import schedules
 - [ ] Dark mode theme
-- [ ] PWA support for mobile installation
+- [x] PWA support for mobile installation (see PWA_SETUP.md)
 - [ ] Notification sound options
+
+## PWA (Progressive Web App) Support
+
+The web interface now supports installation as a Progressive Web App on Android devices!
+
+**Benefits:**
+- Install as native-feeling app on home screen
+- Standalone mode (no browser UI)
+- Faster loading with service worker caching
+- Works identically to web version
+
+**Setup Instructions:**
+See `PWA_SETUP.md` for complete installation and usage guide.
+
+**Quick Start:**
+1. Generate app icons: Open `generate-icons.html` in browser
+2. Build: `npm run build`
+3. Preview: `npm run preview`
+4. Install on Android: Visit app URL and select "Install app" from browser menu
+
+**Note:** PWA with Web Bluetooth only works on Android (Chrome/Edge). iOS does not support Web Bluetooth API.
 
 ## Troubleshooting
 
