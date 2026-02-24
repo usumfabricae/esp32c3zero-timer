@@ -5,10 +5,6 @@ workflows:
     instance_type: mac_mini_m1
     
     environment:
-      android_signing:
-        - keystore_reference
-      groups:
-        - google_play # Optional: if you want to publish to Play Store
       vars:
         PACKAGE_NAME: "net.superfede.BleTimerWebView"
         APP_NAME: "BLE Timer"
@@ -65,15 +61,14 @@ workflows:
         script: |
           echo "sdk.dir=$ANDROID_SDK_ROOT" > webclient/android/local.properties
           
-      - name: Build Android APK
+      - name: Build Android Debug APK
         script: |
           cd webclient/android
           chmod +x gradlew
-          ./gradlew assembleRelease
+          ./gradlew assembleDebug
           
     artifacts:
       - webclient/android/app/build/outputs/**/*.apk
-      - webclient/android/app/build/outputs/**/*.aab
       
     publishing:
       email:
