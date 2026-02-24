@@ -2,14 +2,20 @@
   "name": "@superfede/capacitor-ble-peripheral",
   "version": "1.0.0",
   "description": "Capacitor plugin for BLE peripheral (server) functionality",
-  "main": "dist/plugin.cjs.js",
-  "module": "dist/esm/index.js",
-  "types": "dist/esm/index.d.ts",
-  "unpkg": "dist/plugin.js",
+  "main": "src/index.ts",
+  "module": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": {
+      "import": "./src/index.ts",
+      "require": "./src/index.ts",
+      "types": "./src/index.ts"
+    }
+  },
   "files": [
     "android/src/main/",
     "android/build.gradle",
-    "dist/",
+    "android/src/main/AndroidManifest.xml",
     "src/"
   ],
   "author": "SuperFede",

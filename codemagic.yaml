@@ -55,7 +55,29 @@ workflows:
       - name: Install BLE Peripheral Plugin
         script: |
           cd webclient
-          npm install ./ble-peripheral-plugin
+          # Install plugin from local directory
+          npm install ./ble-peripheral-plugin --no-save
+          
+          # Verify plugin is installed
+          if [ -d "node_modules/@superfede/capacitor-ble-peripheral" ]; then
+            echo "✓ Plugin installed successfully"
+            ls -la node_modules/@superfede/capacitor-ble-peripheral/src/
+          else
+            echo "✗ Plugin installation failed"
+            exit 1
+          fi
+          
+      - name: Verify Plugin Structure
+        script: |
+          cd webclient
+          echo "=== Checking plugin files ==="
+          ls -la ble-peripheral-plugin/src/
+          echo ""
+          echo "=== Checking installed plugin ==="
+          ls -la node_modules/@superfede/capacitor-ble-peripheral/src/
+          echo ""
+          echo "=== Checking package.json ==="
+          cat node_modules/@superfede/capacitor-ble-peripheral/package.json
           
       - name: Build Peripheral Demo Web App
         script: |
