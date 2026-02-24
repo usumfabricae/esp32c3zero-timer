@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import './App.css'
-import { useBLE } from './hooks/useBLE.js'
+import { useBLEUnified } from './hooks/useBLEUnified.js'
 import Header from './components/Header.jsx'
 import Sidebar from './components/Sidebar.jsx'
 import Dashboard from './components/Dashboard.jsx'
@@ -11,8 +11,8 @@ import Notification from './components/Notification.jsx'
 import PWAInstallPrompt from './components/PWAInstallPrompt.jsx'
 
 function App() {
-  // Initialize useBLE hook
-  const ble = useBLE();
+  // Initialize unified BLE hook (auto-detects web vs native)
+  const ble = useBLEUnified();
   
   // Manage current view state
   const [currentView, setCurrentView] = useState('dashboard');

@@ -15,6 +15,16 @@ const config: CapacitorConfig = {
       keystoreAliasPassword: undefined,
       releaseType: 'APK'
     }
+  },
+  plugins: {
+    BluetoothLe: {
+      displayStrings: {
+        scanning: "Scanning for BLE devices...",
+        cancel: "Cancel",
+        availableDevices: "Available devices",
+        noDeviceFound: "No device found"
+      }
+    }
   }
 };
 
