@@ -31,8 +31,10 @@ import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import com.getcapacitor.annotation.Permission;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -60,6 +62,11 @@ public class BlePeripheralPlugin extends Plugin {
     private Map<String, BluetoothGattCharacteristic> characteristics = new HashMap<>();
     private Set<BluetoothDevice> connectedDevices = new HashSet<>();
     private Map<String, Set<BluetoothDevice>> notificationSubscriptions = new HashMap<>();
+    
+    // For handling async service addition
+    private PluginCall pendingStartServerCall = null;
+    private List<BluetoothGattService> servicesToAdd = new ArrayList<>();
+    private int servicesAdded = 0;
 
     @PluginMethod
     public void initialize(PluginCall call) {
@@ -210,21 +217,41 @@ public class BlePeripheralPlugin extends Plugin {
                 return;
             }
 
-            // Add all configured services to the GATT server
-            for (BluetoothGattService service : services.values()) {
-                boolean success = gattServer.addService(service);
-                if (success) {
-                    Log.d(TAG, "Added service to GATT server: " + service.getUuid());
-                } else {
-                    Log.e(TAG, "Failed to add service to GATT server: " + service.getUuid());
-                }
+            // Store the call for async completion
+            pendingStartServerCall = call;
+            
+            // Prepare list of services to add
+            servicesToAdd = new ArrayList<>(services.values());
+            servicesAdded = 0;
+
+            if (servicesToAdd.isEmpty()) {
+                call.reject("No services to add");
+                return;
             }
 
-            Log.d(TAG, "GATT server started with " + services.size() + " services");
-            call.resolve();
+            // Start adding services one by one (async callbacks will continue)
+            Log.d(TAG, "Starting to add " + servicesToAdd.size() + " services to GATT server");
+            addNextService();
+            
         } catch (Exception e) {
             Log.e(TAG, "Start server failed", e);
             call.reject("Start server failed: " + e.getMessage());
+        }
+    }
+
+    private void addNextService() {
+        if (servicesAdded < servicesToAdd.size()) {
+            BluetoothGattService service = servicesToAdd.get(servicesAdded);
+            boolean success = gattServer.addService(service);
+            if (!success) {
+                Log.e(TAG, "Failed to initiate adding service: " + service.getUuid());
+                if (pendingStartServerCall != null) {
+                    pendingStartServerCall.reject("Failed to add service: " + service.getUuid());
+                    pendingStartServerCall = null;
+                }
+            } else {
+                Log.d(TAG, "Initiated adding service " + (servicesAdded + 1) + "/" + servicesToAdd.size() + ": " + service.getUuid());
+            }
         }
     }
 
@@ -430,6 +457,32 @@ public class BlePeripheralPlugin extends Plugin {
     };
 
     private final BluetoothGattServerCallback gattServerCallback = new BluetoothGattServerCallback() {
+        @Override
+        public void onServiceAdded(int status, BluetoothGattService service) {
+            if (status == BluetoothGatt.GATT_SUCCESS) {
+                servicesAdded++;
+                Log.d(TAG, "Service added successfully (" + servicesAdded + "/" + servicesToAdd.size() + "): " + service.getUuid());
+                
+                // Check if all services have been added
+                if (servicesAdded >= servicesToAdd.size()) {
+                    Log.d(TAG, "All services added successfully");
+                    if (pendingStartServerCall != null) {
+                        pendingStartServerCall.resolve();
+                        pendingStartServerCall = null;
+                    }
+                } else {
+                    // Add next service
+                    addNextService();
+                }
+            } else {
+                Log.e(TAG, "Failed to add service: " + service.getUuid() + ", status: " + status);
+                if (pendingStartServerCall != null) {
+                    pendingStartServerCall.reject("Failed to add service: " + service.getUuid() + ", status: " + status);
+                    pendingStartServerCall = null;
+                }
+            }
+        }
+
         @Override
         public void onConnectionStateChange(BluetoothDevice device, int status, int newState) {
             if (newState == BluetoothGatt.STATE_CONNECTED) {
