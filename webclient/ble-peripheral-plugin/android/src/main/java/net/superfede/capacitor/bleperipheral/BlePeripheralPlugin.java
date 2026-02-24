@@ -23,6 +23,7 @@ import android.util.Log;
 
 import androidx.core.app.ActivityCompat;
 
+import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
