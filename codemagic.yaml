@@ -140,7 +140,6 @@ workflows:
             }
           }
           
-          apply from: "../capacitor-cordova-android-plugins/cordova.variables.gradle"
           dependencies {
             implementation project(':capacitor-android')
             implementation project(':capacitor-ble-peripheral')
