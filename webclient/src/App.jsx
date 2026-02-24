@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import './App.css'
 import { useBLEUnified } from './hooks/useBLEUnified.js'
+import { Capacitor } from '@capacitor/core'
 import Header from './components/Header.jsx'
 import Sidebar from './components/Sidebar.jsx'
 import Dashboard from './components/Dashboard.jsx'
@@ -33,9 +34,10 @@ function App() {
   // Track if we need to read initial data after connection
   const [needsInitialRead, setNeedsInitialRead] = useState(false);
 
-  // Check for Web Bluetooth API support on mount
+  // Check for BLE support on mount (Web Bluetooth API or Capacitor)
   useEffect(() => {
-    if (!navigator.bluetooth) {
+    const isNative = Capacitor.isNativePlatform();
+    if (!isNative && !navigator.bluetooth) {
       setIsSupported(false);
       console.error('Web Bluetooth API is not supported in this browser');
     }
