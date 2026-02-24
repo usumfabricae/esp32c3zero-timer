@@ -52,47 +52,25 @@ workflows:
           cd webclient
           npm ci
           
-      - name: Install BLE Peripheral Plugin
-        script: |
-          cd webclient
-          
-          # Method 1: Try npm install
-          echo "=== Attempting npm install ==="
-          npm install ./ble-peripheral-plugin --no-save
-          
-          # Method 2: Manual copy if npm install didn't work
-          if [ ! -d "node_modules/@superfede/capacitor-ble-peripheral/android" ]; then
-            echo "=== npm install didn't work, copying manually ==="
-            mkdir -p node_modules/@superfede
-            cp -r ble-peripheral-plugin node_modules/@superfede/capacitor-ble-peripheral
-            echo "✓ Plugin copied manually"
-          fi
-          
-          # Verify plugin is installed
+          # Verify BLE Peripheral plugin was installed
           if [ -d "node_modules/@superfede/capacitor-ble-peripheral" ]; then
-            echo "✓ Plugin directory exists"
+            echo "✓ BLE Peripheral plugin installed"
             
-            # Check for android folder
-            if [ -d "node_modules/@superfede/capacitor-ble-peripheral/android" ]; then
-              echo "✓ Android folder exists"
-              ls -la node_modules/@superfede/capacitor-ble-peripheral/android/
+            # Verify it has the capacitor field
+            if grep -q '"capacitor"' node_modules/@superfede/capacitor-ble-peripheral/package.json; then
+              echo "✓ Plugin has capacitor configuration"
             else
-              echo "✗ Android folder missing!"
-              exit 1
-            fi
-            
-            # Check for package.json
-            if [ -f "node_modules/@superfede/capacitor-ble-peripheral/package.json" ]; then
-              echo "✓ package.json exists"
-            else
-              echo "✗ package.json missing!"
+              echo "✗ Plugin missing capacitor configuration!"
               exit 1
             fi
           else
-            echo "✗ Plugin installation failed"
+            echo "✗ BLE Peripheral plugin NOT installed!"
+            echo "Checking node_modules:"
+            ls -la node_modules/@superfede/ || echo "No @superfede folder"
             exit 1
           fi
           
+
       - name: Verify Plugin Structure
         script: |
           cd webclient
