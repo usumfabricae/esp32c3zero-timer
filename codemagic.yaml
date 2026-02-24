@@ -73,8 +73,14 @@ workflows:
           echo "=== Checking plugin files ==="
           ls -la ble-peripheral-plugin/src/
           echo ""
+          echo "=== Checking plugin android folder ==="
+          ls -la ble-peripheral-plugin/android/
+          echo ""
           echo "=== Checking installed plugin ==="
-          ls -la node_modules/@superfede/capacitor-ble-peripheral/src/
+          ls -la node_modules/@superfede/capacitor-ble-peripheral/
+          echo ""
+          echo "=== Checking installed plugin android folder ==="
+          ls -laR node_modules/@superfede/capacitor-ble-peripheral/android/ || echo "Android folder not found!"
           echo ""
           echo "=== Checking package.json ==="
           cat node_modules/@superfede/capacitor-ble-peripheral/package.json
@@ -141,9 +147,29 @@ workflows:
             exit 1
           fi
           
-          # Sync Capacitor to copy new web assets
-          echo "Syncing peripheral demo assets..."
+          # Force clean sync to ensure plugin is registered
+          echo "Cleaning Capacitor cache..."
+          rm -rf android/capacitor-cordova-android-plugins
+          
+          # Sync Capacitor to copy new web assets and register plugins
+          echo "Syncing peripheral demo assets and plugins..."
           npx cap sync android
+          
+          # Verify plugin was registered
+          echo "Checking plugin registration..."
+          if [ -f "android/capacitor-cordova-android-plugins/build.gradle" ]; then
+            echo "✓ Plugin bridge created"
+            cat android/capacitor-cordova-android-plugins/build.gradle
+          fi
+          
+          # Check if plugin is in settings.gradle
+          if grep -q "capacitor-ble-peripheral" android/settings.gradle; then
+            echo "✓ BLE Peripheral plugin found in settings.gradle"
+          else
+            echo "✗ BLE Peripheral plugin NOT in settings.gradle"
+            echo "Content of settings.gradle:"
+            cat android/settings.gradle
+          fi
           
           # Verify the correct files were copied
           echo "Verifying assets..."
