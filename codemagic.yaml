@@ -1,0 +1,84 @@
+workflows:
+  android-capacitor-workflow:
+    name: Android Capacitor Build
+    max_build_duration: 60
+    instance_type: mac_mini_m1
+    
+    environment:
+      android_signing:
+        - keystore_reference
+      groups:
+        - google_play # Optional: if you want to publish to Play Store
+      vars:
+        PACKAGE_NAME: "net.superfede.BleTimerWebView"
+        APP_NAME: "BLE Timer"
+      node: 18
+      java: 17
+      
+    triggering:
+      events:
+        - push
+        - tag
+        - pull_request
+      branch_patterns:
+        - pattern: 'main'
+          include: true
+          source: true
+      
+    scripts:
+      - name: Install npm dependencies
+        script: |
+          cd webclient
+          npm ci
+          
+      - name: Initialize Capacitor (if not exists)
+        script: |
+          cd webclient
+          # Only init if capacitor.config.ts doesn't exist
+          if [ ! -f "capacitor.config.ts" ]; then
+            npx cap init "$APP_NAME" "$PACKAGE_NAME" --web-dir=dist
+          else
+            echo "Capacitor already initialized"
+          fi
+          
+      - name: Add Android platform (if not exists)
+        script: |
+          cd webclient
+          # Only add android if folder doesn't exist
+          if [ ! -d "android" ]; then
+            npx cap add android
+          else
+            echo "Android platform already added"
+          fi
+          
+      - name: Build web app
+        script: |
+          cd webclient
+          npm run build
+          
+      - name: Sync Capacitor
+        script: |
+          cd webclient
+          npx cap sync android
+          
+      - name: Set up local.properties
+        script: |
+          echo "sdk.dir=$ANDROID_SDK_ROOT" > webclient/android/local.properties
+          
+      - name: Build Android APK
+        script: |
+          cd webclient/android
+          chmod +x gradlew
+          ./gradlew assembleRelease
+          
+    artifacts:
+      - webclient/android/app/build/outputs/**/*.apk
+      - webclient/android/app/build/outputs/**/*.aab
+      
+    publishing:
+      email:
+        recipients:
+          - your-email@example.com
+        notify:
+          success: true
+          failure: true
