@@ -50,7 +50,7 @@ workflows:
       - name: Install npm dependencies
         script: |
           cd webclient
-          npm ci
+          npm install
           
           # Verify BLE Peripheral plugin was installed
           if [ -d "node_modules/@superfede/capacitor-ble-peripheral" ]; then
