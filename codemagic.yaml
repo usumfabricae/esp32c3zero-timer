@@ -164,6 +164,30 @@ workflows:
           }
           EOF
           
+          # Create build.gradle for capacitor-cordova-android-plugins
+          cat > android/capacitor-cordova-android-plugins/build.gradle << 'EOF'
+          apply plugin: 'com.android.library'
+          
+          android {
+              namespace "com.getcapacitor.cordova"
+              compileSdk rootProject.ext.compileSdkVersion
+              
+              defaultConfig {
+                  minSdk rootProject.ext.minSdkVersion
+                  targetSdk rootProject.ext.targetSdkVersion
+              }
+              
+              compileOptions {
+                  sourceCompatibility JavaVersion.VERSION_21
+                  targetCompatibility JavaVersion.VERSION_21
+              }
+          }
+          
+          dependencies {
+              implementation project(':capacitor-android')
+          }
+          EOF
+          
           # Verify Capacitor files were created
           echo "=== Checking Capacitor files ==="
           echo "✓ capacitor.settings.gradle:"
