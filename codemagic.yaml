@@ -8,7 +8,7 @@ workflows:
       vars:
         PACKAGE_NAME: "net.superfede.BleTimerWebView"
         APP_NAME: "BLE Timer"
-      node: 18
+      node: 22
       java: 17
       
     triggering:
@@ -43,6 +43,8 @@ workflows:
           # Only add android if folder doesn't exist
           if [ ! -d "android" ]; then
             npx cap add android
+            # Add Bluetooth permissions
+            node setup-android-permissions.js
           else
             echo "Android platform already added"
           fi
