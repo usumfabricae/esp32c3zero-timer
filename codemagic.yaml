@@ -44,7 +44,7 @@ workflows:
           if [ ! -d "android" ]; then
             npx cap add android
             # Add Bluetooth permissions
-            node setup-android-permissions.js
+            node setup-android-permissions.mjs
           else
             echo "Android platform already added"
           fi

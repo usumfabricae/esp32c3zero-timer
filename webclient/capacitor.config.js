@@ -1,6 +1,6 @@
 import { CapacitorConfig } from '@capacitor/cli';
 
-const config: CapacitorConfig = {
+const config = {
   appId: 'net.superfede.BleTimerWebView',
   appName: 'BLE Timer',
   webDir: 'dist',
