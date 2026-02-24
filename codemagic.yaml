@@ -30,8 +30,8 @@ workflows:
       - name: Initialize Capacitor (if not exists)
         script: |
           cd webclient
-          # Only init if capacitor.config.ts doesn't exist
-          if [ ! -f "capacitor.config.ts" ]; then
+          # Only init if capacitor.config.json doesn't exist
+          if [ ! -f "capacitor.config.json" ]; then
             npx cap init "$APP_NAME" "$PACKAGE_NAME" --web-dir=dist
           else
             echo "Capacitor already initialized"
