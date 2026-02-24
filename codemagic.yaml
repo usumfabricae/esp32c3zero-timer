@@ -82,16 +82,18 @@ workflows:
           echo "=== Checking package.json ==="
           cat node_modules/@superfede/capacitor-ble-peripheral/package.json
           
-      - name: Build Peripheral Demo Web App
+      - name: Build Main Web App
         script: |
           cd webclient
-          CAPACITOR=true npm run build:peripheral
+          CAPACITOR=true npm run build
+          echo "✓ Main web app built"
+          ls -la dist/
           
       - name: Setup Android Platform
         script: |
           cd webclient
           
-          # Add Android platform if it doesn't exist
+          # Add Android platform (needs dist/ folder to exist)
           if [ ! -d "android" ]; then
             echo "Adding Android platform..."
             npx cap add android
@@ -104,6 +106,13 @@ workflows:
           
           echo "✓ Android platform ready"
           ls -la android/
+      
+      - name: Build Peripheral Demo Web App
+        script: |
+          cd webclient
+          CAPACITOR=true npm run build:peripheral
+          echo "✓ Peripheral web app built"
+          ls -la dist-peripheral/
           
       - name: Build Peripheral Demo APK
         script: |
