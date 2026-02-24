@@ -40,7 +40,7 @@ ESP32-C3 temperature-controlled bistable relay timer with weekly scheduling capa
 
 ## Web Client Interface
 
-React-based single-page application for device control via Web Bluetooth API:
+React-based application for device control available on multiple platforms:
 
 - Real-time temperature and battery monitoring
 - Visual relay state indicator (gauge component)
@@ -53,5 +53,16 @@ React-based single-page application for device control via Web Bluetooth API:
 - Connect/Disconnect button with visual state indication
 - Responsive design for mobile and desktop
 - Network-accessible dev server for mobile testing
+
+### Platforms
+
+**Web Application:**
 - HTTPS required (Web Bluetooth API security requirement)
 - Browser support: Chrome 56+, Edge 79+, Opera 43+
+- Live demo: https://usumfabricae.github.io/esp32c3zero-timer/
+
+**Android Application:**
+- Android 7.0+ (API 24+)
+- Native app via Capacitor framework
+- Uses Capacitor Bluetooth LE plugin
+- Automated builds via Codemagic CI/CD

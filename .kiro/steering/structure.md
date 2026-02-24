@@ -65,31 +65,44 @@ webclient/
 │   │   ├── Notification.jsx/css
 │   │   └── RawBLETest.jsx
 │   ├── hooks/
-│   │   └── useBLE.js       # Web Bluetooth API hook
+│   │   ├── useBLE.js           # Web Bluetooth API hook
+│   │   ├── useBLECapacitor.js  # Capacitor BLE hook
+│   │   └── useBLEUnified.js    # Platform detection & unified interface
 │   ├── utils/
 │   │   └── dataFormatter.js # Data conversion utilities
 │   ├── styles/
 │   │   └── global.css      # Global styles
 │   ├── App.jsx/css         # Main app component
 │   └── main.jsx            # React entry point
+├── android/                # Capacitor Android project
+│   ├── app/
+│   │   ├── build.gradle    # Android build configuration
+│   │   └── src/main/       # Android app source
+│   ├── build.gradle        # Root Android build config
+│   ├── gradle.properties   # Gradle properties
+│   └── variables.gradle    # Android SDK versions
 ├── dist/                   # Production build output
 ├── node_modules/           # Dependencies
 ├── index.html              # HTML template
-├── vite.config.js          # Vite configuration
+├── vite.config.js          # Vite configuration (conditional base path)
+├── capacitor.config.json   # Capacitor configuration
+├── codemagic.yaml          # CI/CD pipeline configuration
 ├── package.json            # NPM dependencies and scripts
 ├── generate-cert.ps1       # HTTPS certificate generation
 ├── show-ip.ps1             # Network IP display
-├── README.md               # Web client documentation
+├── README.md               # Web client & Android app documentation
 ├── TESTING_GUIDE.md        # Testing procedures
 ├── MOBILE_TESTING.md       # Mobile testing guide
-└── CHECKPOINT_8_VERIFICATION.md
+├── ANDROID_BUILD_SUMMARY.md # Android build documentation
+└── CODEMAGIC_SETUP.md      # CI/CD setup guide
 ```
 
 ### Component Organization
 - Each component has paired .jsx and .css files
 - Components are self-contained and reusable
-- Custom hooks for complex logic (useBLE)
+- Custom hooks for complex logic (useBLE, useBLECapacitor, useBLEUnified)
 - Utility functions for data formatting and conversion
+- Platform-aware BLE abstraction layer
 
 ## Architecture Patterns
 
@@ -102,10 +115,12 @@ webclient/
 
 ### Web Client
 - React functional components with hooks
-- Custom hook for BLE abstraction (useBLE)
+- Custom hook for BLE abstraction (useBLE for web, useBLECapacitor for Android)
+- Unified BLE interface (useBLEUnified) with automatic platform detection
 - Component composition for UI
 - State management with useState/useEffect
 - CSS modules for scoped styling
+- Capacitor framework for native Android app
 
 ## Configuration Files
 

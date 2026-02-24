@@ -1,6 +1,20 @@
-# ESP32-C3 Timer - Web Interface
+# ESP32-C3 Timer - Web Interface & Android App
 
-A React-based single-page web application for connecting to and controlling the ESP32-C3 temperature-controlled relay timer via Bluetooth Low Energy (BLE) using the Web Bluetooth API.
+A React-based application for connecting to and controlling the ESP32-C3 temperature-controlled relay timer via Bluetooth Low Energy (BLE). Available as both a web application (using Web Bluetooth API) and a native Android app (using Capacitor).
+
+## Platforms
+
+### Web Application
+- **Browser Requirements:** Chrome 56+, Edge 79+, Opera 43+
+- **Protocol:** Web Bluetooth API
+- **Deployment:** HTTPS required (localhost allowed for development)
+- **Access:** https://usumfabricae.github.io/esp32c3zero-timer/
+
+### Android Application
+- **Requirements:** Android 7.0+ (API 24+)
+- **Protocol:** Capacitor Bluetooth LE plugin
+- **Build:** Automated via Codemagic CI/CD
+- **Distribution:** APK download from Codemagic artifacts
 
 ## Features
 

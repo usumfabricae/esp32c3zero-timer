@@ -524,9 +524,13 @@ idf.py menuconfig
 
 ## Web Interface
 
-A React-based web application provides full device control via Web Bluetooth API.
+A React-based web application provides full device control via Web Bluetooth API. The same codebase also powers a native Android app using Capacitor.
 
 **Live Demo:** https://usumfabricae.github.io/esp32c3zero-timer/
+
+**Platforms:**
+- Web browser (Chrome 56+, Edge 79+, Opera 43+)
+- Android app (APK available via Codemagic CI/CD)
 
 **Features:**
 - Real-time temperature and battery monitoring
@@ -537,11 +541,12 @@ A React-based web application provides full device control via Web Bluetooth API
 - Temperature sensor calibration interface
 - Connection status and notifications
 - Responsive design for mobile and desktop
+- Automatic platform detection (Web Bluetooth API vs Capacitor BLE)
 
 **Requirements:**
-- HTTPS connection (Web Bluetooth API security requirement)
-- Chrome 56+, Edge 79+, or Opera 43+ browsers
-- Node.js v14+ for development
+- **Web:** HTTPS connection (Web Bluetooth API security requirement)
+- **Android:** Android 7.0+ (API 24+), Bluetooth permissions
+- **Development:** Node.js v14+
 
 **Quick Start:**
 ```bash
@@ -552,7 +557,16 @@ npm run dev
 
 Access at `https://localhost:3000`
 
-For detailed web client documentation, see `webclient/README.md`
+**Android Build:**
+```bash
+cd webclient
+CAPACITOR=true npm run build
+npx cap sync android
+cd android
+./gradlew assembleDebug
+```
+
+For detailed web client and Android app documentation, see `webclient/README.md`
 
 ## Project Structure
 
@@ -567,12 +581,16 @@ timer/
 │   ├── scheduler.c/h       # Temperature scheduler
 │   ├── led_status.c/h      # LED status indicators
 │   └── CMakeLists.txt
-├── webclient/              # React web interface
+├── webclient/              # React web interface & Android app
 │   ├── src/
 │   │   ├── components/     # UI components
-│   │   ├── hooks/          # Custom hooks (useBLE)
+│   │   ├── hooks/          # Custom hooks (useBLE, useBLECapacitor, useBLEUnified)
 │   │   └── utils/          # Data formatters
+│   ├── android/            # Capacitor Android project
 │   ├── package.json
+│   ├── capacitor.config.json
+│   ├── vite.config.js      # Conditional base path for web/Android
+│   ├── codemagic.yaml      # CI/CD configuration
 │   └── README.md
 ├── README.md
 ├── SCHEDULER.md            # Detailed scheduler docs
@@ -588,9 +606,19 @@ timer/
 - [ ] MQTT integration
 - [ ] OTA firmware updates
 - [ ] Historical data logging
-- [ ] Mobile app (iOS/Android)
+- [x] Mobile app (Android via Capacitor)
+- [ ] iOS app support
 
 ## Recent Changes
+
+### v1.4 - Android App Support
+- **Native Android App:** Capacitor-based Android app with full BLE functionality
+- **Unified BLE Architecture:** Automatic platform detection (Web Bluetooth vs Capacitor BLE)
+- **CI/CD Pipeline:** Codemagic integration for automated Android builds
+- **Conditional Build:** Vite configuration supports both web and Android builds
+- **Platform Abstraction:** useBLEUnified hook seamlessly switches between implementations
+- **Android 7.0+ Support:** Compatible with API 24 and above
+- **Java 21 Build:** Updated to latest Android Gradle Plugin
 
 ### v1.3 - Enhanced Connection & Network Access
 - **Auto-Reconnect:** Previously paired devices connect automatically without picker (Chrome 85+)
