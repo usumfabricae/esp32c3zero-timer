@@ -13,9 +13,7 @@
     }
   },
   "files": [
-    "android/src/main/",
-    "android/build.gradle",
-    "android/src/main/AndroidManifest.xml",
+    "android/",
     "src/"
   ],
   "author": "SuperFede",
