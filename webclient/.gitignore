@@ -10,7 +10,12 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+dist-peripheral
 *.local
+
+# Android builds
+android-peripheral/
+*.apk
 
 # Editor directories and files
 .vscode/*

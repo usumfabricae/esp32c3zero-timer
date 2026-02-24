@@ -1,0 +1,194 @@
+.ble-peripheral-demo {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 20px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+}
+
+.ble-peripheral-demo h2 {
+  color: #333;
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+.ble-peripheral-demo h3 {
+  color: #555;
+  margin-top: 0;
+  margin-bottom: 15px;
+  font-size: 1.1em;
+}
+
+.error-message {
+  background-color: #fee;
+  border: 1px solid #fcc;
+  color: #c33;
+  padding: 12px;
+  border-radius: 6px;
+  margin-bottom: 20px;
+}
+
+.status-section,
+.control-section,
+.device-state-section,
+.update-section,
+.info-section {
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 20px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.status-grid,
+.state-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 15px;
+}
+
+.status-item,
+.state-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px;
+  background: #f9f9f9;
+  border-radius: 4px;
+}
+
+.status-item.full-width {
+  grid-column: 1 / -1;
+}
+
+.status-item .label,
+.state-item .label {
+  font-weight: 600;
+  color: #666;
+}
+
+.status-item .value,
+.state-item .value {
+  font-weight: 500;
+}
+
+.value.success {
+  color: #28a745;
+}
+
+.value.error {
+  color: #dc3545;
+}
+
+.input-group {
+  margin-bottom: 15px;
+}
+
+.input-group label {
+  display: block;
+  margin-bottom: 5px;
+  font-weight: 600;
+  color: #555;
+}
+
+.input-group input {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.input-group input:disabled {
+  background-color: #f5f5f5;
+  cursor: not-allowed;
+}
+
+.button-group {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+button {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background-color: #007bff;
+  color: white;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background-color: #0056b3;
+}
+
+.btn-secondary {
+  background-color: #6c757d;
+  color: white;
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background-color: #545b62;
+}
+
+.btn-update {
+  background-color: #28a745;
+  color: white;
+  flex: 1;
+  min-width: 150px;
+}
+
+.btn-update:hover:not(:disabled) {
+  background-color: #218838;
+}
+
+.hint {
+  margin-top: 15px;
+  padding: 10px;
+  background: #e7f3ff;
+  border-left: 4px solid #007bff;
+  color: #004085;
+  font-size: 14px;
+}
+
+.info-section ol {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.info-section li {
+  margin-bottom: 8px;
+  color: #555;
+  line-height: 1.5;
+}
+
+@media (max-width: 600px) {
+  .ble-peripheral-demo {
+    padding: 10px;
+  }
+
+  .status-grid,
+  .state-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .button-group {
+    flex-direction: column;
+  }
+
+  button {
+    width: 100%;
+  }
+}

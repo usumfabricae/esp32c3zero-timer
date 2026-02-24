@@ -1,0 +1,16 @@
+{
+  "appId": "net.superfede.BlePeripheralDemo",
+  "appName": "BLE Peripheral Demo",
+  "webDir": "dist-peripheral",
+  "server": {
+    "androidScheme": "https"
+  },
+  "android": {
+    "buildOptions": {
+      "releaseType": "APK"
+    }
+  },
+  "plugins": {
+    "BlePeripheral": {}
+  }
+}

@@ -1,0 +1,60 @@
+{
+  "name": "@superfede/capacitor-ble-peripheral",
+  "version": "1.0.0",
+  "description": "Capacitor plugin for BLE peripheral (server) functionality",
+  "main": "dist/plugin.cjs.js",
+  "module": "dist/esm/index.js",
+  "types": "dist/esm/index.d.ts",
+  "unpkg": "dist/plugin.js",
+  "files": [
+    "android/src/main/",
+    "android/build.gradle",
+    "dist/",
+    "src/"
+  ],
+  "author": "SuperFede",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/usumfabricae/esp32c3zero-timer"
+  },
+  "keywords": [
+    "capacitor",
+    "plugin",
+    "bluetooth",
+    "ble",
+    "peripheral",
+    "server",
+    "gatt"
+  ],
+  "scripts": {
+    "verify": "npm run verify:android",
+    "verify:android": "cd android && ./gradlew clean build test && cd ..",
+    "build": "npm run clean && npm run docgen && tsc && rollup -c rollup.config.js",
+    "clean": "rimraf ./dist",
+    "watch": "tsc --watch",
+    "prepublishOnly": "npm run build",
+    "docgen": "docgen --api BlePeripheralPlugin --output-readme README.md --output-json dist/docs.json"
+  },
+  "devDependencies": {
+    "@capacitor/android": "^8.0.0",
+    "@capacitor/core": "^8.0.0",
+    "@capacitor/docgen": "^0.2.2",
+    "@ionic/prettier-config": "^4.0.0",
+    "@ionic/swiftlint-config": "^1.1.2",
+    "prettier": "~3.2.5",
+    "prettier-plugin-java": "~2.6.0",
+    "rimraf": "^5.0.5",
+    "rollup": "^4.9.6",
+    "typescript": "~5.3.3"
+  },
+  "peerDependencies": {
+    "@capacitor/core": "^8.0.0"
+  },
+  "prettier": "@ionic/prettier-config",
+  "capacitor": {
+    "android": {
+      "src": "android"
+    }
+  }
+}

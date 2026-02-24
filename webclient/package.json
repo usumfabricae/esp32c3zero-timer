@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:peripheral": "vite build --config vite.config.peripheral.js",
     "preview": "vite preview"
   },
   "dependencies": {
