@@ -87,6 +87,24 @@ workflows:
           cd webclient
           CAPACITOR=true npm run build:peripheral
           
+      - name: Setup Android Platform
+        script: |
+          cd webclient
+          
+          # Add Android platform if it doesn't exist
+          if [ ! -d "android" ]; then
+            echo "Adding Android platform..."
+            npx cap add android
+          else
+            echo "Android platform already exists"
+          fi
+          
+          # Sync to ensure everything is up to date
+          npx cap sync android
+          
+          echo "✓ Android platform ready"
+          ls -la android/
+          
       - name: Build Peripheral Demo APK
         script: |
           cd webclient
