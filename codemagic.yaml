@@ -108,6 +108,13 @@ workflows:
         script: |
           cd webclient
           CAPACITOR=true npm run build:peripheral
+          
+          # Rename index-peripheral.html to index.html for Capacitor
+          if [ -f "dist-peripheral/index-peripheral.html" ]; then
+            mv dist-peripheral/index-peripheral.html dist-peripheral/index.html
+            echo "✓ Renamed index-peripheral.html to index.html"
+          fi
+          
           echo "✓ Peripheral web app built"
           ls -la dist-peripheral/
           
@@ -127,17 +134,31 @@ workflows:
           # Use peripheral dist
           mv dist-peripheral dist
           
+          # Verify dist has index.html
+          if [ ! -f "dist/index.html" ]; then
+            echo "✗ Error: dist/index.html not found!"
+            ls -la dist/
+            exit 1
+          fi
+          
           # Sync Capacitor to copy new web assets
           echo "Syncing peripheral demo assets..."
           npx cap sync android
           
           # Verify the correct files were copied
           echo "Verifying assets..."
-          if grep -q "BLE Peripheral Demo" android/app/src/main/assets/public/index.html; then
-            echo "✓ Correct assets copied (Peripheral Demo)"
+          if [ -f "android/app/src/main/assets/public/index.html" ]; then
+            if grep -q "BLE Peripheral Demo" android/app/src/main/assets/public/index.html; then
+              echo "✓ Correct assets copied (Peripheral Demo)"
+            else
+              echo "✗ Wrong assets! Still has main app"
+              echo "Content of index.html:"
+              cat android/app/src/main/assets/public/index.html
+              exit 1
+            fi
           else
-            echo "✗ Wrong assets! Still has main app"
-            cat android/app/src/main/assets/public/index.html
+            echo "✗ index.html not found in assets!"
+            ls -la android/app/src/main/assets/public/
             exit 1
           fi
           
@@ -158,6 +179,12 @@ workflows:
           
           # Restore original dist
           mv dist dist-peripheral
+          
+          # Restore index.html to index-peripheral.html in dist-peripheral
+          if [ -f "dist-peripheral/index.html" ]; then
+            mv dist-peripheral/index.html dist-peripheral/index-peripheral.html
+          fi
+          
           if [ -d "dist-backup" ]; then
             mv dist-backup dist
           fi
