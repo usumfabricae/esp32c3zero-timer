@@ -406,7 +406,7 @@ public class BlePeripheralPlugin extends Plugin {
         call.resolve(result);
     }
 
-    protected boolean checkPermissions(PluginCall call) {
+    public boolean checkPermissions(PluginCall call) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             if (ActivityCompat.checkSelfPermission(getContext(), 
                     Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED ||
