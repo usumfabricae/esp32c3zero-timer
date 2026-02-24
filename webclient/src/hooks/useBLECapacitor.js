@@ -152,7 +152,7 @@ export const useBLECapacitor = () => {
   const readTemperature = useCallback(async () => {
     try {
       const data = await readCharacteristic(CHAR_TEMPERATURE);
-      const temp = DataFormatter.parseTemperature(data);
+      const temp = DataFormatter.decodeTemperature(data);
       setDeviceData(prev => ({ ...prev, temperature: temp }));
       return temp;
     } catch (err) {
@@ -165,7 +165,7 @@ export const useBLECapacitor = () => {
   const readCurrentTime = useCallback(async () => {
     try {
       const data = await readCharacteristic(CHAR_CURRENT_TIME);
-      const time = DataFormatter.parseCurrentTime(data);
+      const time = DataFormatter.decodeCurrentTime(data);
       setDeviceData(prev => ({ ...prev, currentTime: time }));
       return time;
     } catch (err) {
@@ -178,7 +178,7 @@ export const useBLECapacitor = () => {
   const readRelayState = useCallback(async () => {
     try {
       const data = await readCharacteristic(CHAR_RELAY_STATE);
-      const { state, overrideEndTime } = DataFormatter.parseRelayState(data);
+      const { state, overrideEndTime } = DataFormatter.decodeRelayState(data);
       setDeviceData(prev => ({ 
         ...prev, 
         relayState: state,
@@ -194,7 +194,7 @@ export const useBLECapacitor = () => {
   // Write relay state
   const writeRelayState = useCallback(async (state, durationMinutes) => {
     try {
-      const data = DataFormatter.formatRelayState(state, durationMinutes);
+      const data = DataFormatter.encodeRelayState(state, durationMinutes);
       await writeCharacteristic(CHAR_RELAY_STATE, data);
       await readRelayState(); // Read back to update state
     } catch (err) {
@@ -206,27 +206,50 @@ export const useBLECapacitor = () => {
   // Read schedule
   const readSchedule = useCallback(async () => {
     try {
-      const scheduleData = {};
-      const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+      // Request full schedule
+      const requestCmd = new Uint8Array([0xFF]);
+      await writeCharacteristic(CHAR_SCHEDULE, new DataView(requestCmd.buffer));
       
-      for (let i = 0; i < 7; i++) {
+      // Small delay
+      await new Promise(resolve => setTimeout(resolve, 50));
+      
+      // Read chunks
+      let scheduleBuffer = '';
+      const maxChunkSize = 22;
+      let chunkCount = 0;
+      
+      while (true) {
         const data = await readCharacteristic(CHAR_SCHEDULE);
-        const daySchedule = DataFormatter.parseSchedule(data);
-        scheduleData[days[i]] = daySchedule;
+        
+        if (data.byteLength === 0) {
+          break;
+        }
+        
+        const decoder = new TextDecoder('utf-8');
+        const chunk = decoder.decode(data);
+        scheduleBuffer += chunk;
+        chunkCount++;
+        
+        if (data.byteLength < maxChunkSize || chunkCount > 20) {
+          break;
+        }
+        
+        await new Promise(resolve => setTimeout(resolve, 20));
       }
       
-      setDeviceData(prev => ({ ...prev, schedule: scheduleData }));
-      return scheduleData;
+      const schedule = DataFormatter.decodeSchedule(scheduleBuffer);
+      setDeviceData(prev => ({ ...prev, schedule }));
+      return schedule;
     } catch (err) {
       console.error('[Capacitor BLE] Read schedule failed:', err);
       throw err;
     }
-  }, [readCharacteristic]);
+  }, [readCharacteristic, writeCharacteristic]);
 
   // Write schedule
   const writeSchedule = useCallback(async (day, schedule) => {
     try {
-      const data = DataFormatter.formatSchedule(day, schedule);
+      const data = DataFormatter.encodeSchedule(day, schedule);
       await writeCharacteristic(CHAR_SCHEDULE, data);
     } catch (err) {
       console.error('[Capacitor BLE] Write schedule failed:', err);
@@ -238,7 +261,7 @@ export const useBLECapacitor = () => {
   const readTemperatureThresholds = useCallback(async () => {
     try {
       const data = await readCharacteristic(CHAR_TEMP_THRESHOLDS);
-      const thresholds = DataFormatter.parseTemperatureThresholds(data);
+      const thresholds = DataFormatter.decodeTemperatureThresholds(data);
       setDeviceData(prev => ({ ...prev, thresholds }));
       return thresholds;
     } catch (err) {
@@ -250,7 +273,7 @@ export const useBLECapacitor = () => {
   // Write temperature thresholds
   const writeTemperatureThresholds = useCallback(async (highTemp, lowTemp) => {
     try {
-      const data = DataFormatter.formatTemperatureThresholds(highTemp, lowTemp);
+      const data = DataFormatter.encodeTemperatureThresholds(highTemp, lowTemp);
       await writeCharacteristic(CHAR_TEMP_THRESHOLDS, data);
       await readTemperatureThresholds(); // Read back to update state
     } catch (err) {
@@ -263,13 +286,12 @@ export const useBLECapacitor = () => {
   const readBatteryLevel = useCallback(async () => {
     try {
       const data = await BleClient.read(deviceId, BATTERY_SERVICE_UUID, CHAR_BATTERY_LEVEL);
-      const { level, voltage } = DataFormatter.parseBatteryLevel(data);
+      const level = data.getUint8(0);
       setDeviceData(prev => ({ 
         ...prev, 
-        batteryLevel: level,
-        batteryVoltage: voltage 
+        batteryLevel: level
       }));
-      return { level, voltage };
+      return level;
     } catch (err) {
       console.error('[Capacitor BLE] Read battery failed:', err);
       throw err;
@@ -287,7 +309,7 @@ export const useBLECapacitor = () => {
         SERVICE_UUID,
         CHAR_TEMPERATURE,
         (data) => {
-          const temp = DataFormatter.parseTemperature(data);
+          const temp = DataFormatter.decodeTemperature(data);
           setDeviceData(prev => ({ ...prev, temperature: temp }));
         }
       );
@@ -298,7 +320,7 @@ export const useBLECapacitor = () => {
         SERVICE_UUID,
         CHAR_CURRENT_TIME,
         (data) => {
-          const time = DataFormatter.parseCurrentTime(data);
+          const time = DataFormatter.decodeCurrentTime(data);
           setDeviceData(prev => ({ ...prev, currentTime: time }));
         }
       );
@@ -309,11 +331,10 @@ export const useBLECapacitor = () => {
         BATTERY_SERVICE_UUID,
         CHAR_BATTERY_LEVEL,
         (data) => {
-          const { level, voltage } = DataFormatter.parseBatteryLevel(data);
+          const level = data.getUint8(0);
           setDeviceData(prev => ({ 
             ...prev, 
-            batteryLevel: level,
-            batteryVoltage: voltage 
+            batteryLevel: level
           }));
         }
       );
