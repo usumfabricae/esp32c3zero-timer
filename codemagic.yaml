@@ -115,8 +115,9 @@ workflows:
         script: |
           cd webclient
           
-          # Use the existing android folder (already properly configured)
-          # Just need to swap the web assets
+          # Clean the Android assets folder completely
+          echo "Cleaning Android assets..."
+          rm -rf android/app/src/main/assets/public/*
           
           # Backup current dist
           if [ -d "dist" ]; then
@@ -127,11 +128,27 @@ workflows:
           mv dist-peripheral dist
           
           # Sync Capacitor to copy new web assets
+          echo "Syncing peripheral demo assets..."
           npx cap sync android
           
-          # Build APK (while peripheral assets are in place)
+          # Verify the correct files were copied
+          echo "Verifying assets..."
+          if grep -q "BLE Peripheral Demo" android/app/src/main/assets/public/index.html; then
+            echo "✓ Correct assets copied (Peripheral Demo)"
+          else
+            echo "✗ Wrong assets! Still has main app"
+            cat android/app/src/main/assets/public/index.html
+            exit 1
+          fi
+          
+          # Clean build to avoid Gradle cache issues
+          echo "Cleaning Gradle build..."
           cd android
           chmod +x gradlew
+          ./gradlew clean
+          
+          # Build APK
+          echo "Building APK..."
           ./gradlew assembleDebug
           cd ..
           
@@ -139,7 +156,7 @@ workflows:
           mkdir -p ../build-output
           cp android/app/build/outputs/apk/debug/app-debug.apk ../build-output/ble-peripheral-demo-debug.apk
           
-          # Now restore original dist (after APK is built)
+          # Restore original dist
           mv dist dist-peripheral
           if [ -d "dist-backup" ]; then
             mv dist-backup dist
