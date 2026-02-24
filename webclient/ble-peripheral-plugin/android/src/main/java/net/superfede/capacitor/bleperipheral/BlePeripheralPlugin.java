@@ -127,9 +127,15 @@ public class BlePeripheralPlugin extends Plugin {
 
             // Add service UUIDs
             if (call.hasOption("serviceUuids")) {
-                for (String uuidStr : call.getArray("serviceUuids").toList()) {
-                    UUID uuid = UUID.fromString(uuidStr.toString());
-                    dataBuilder.addServiceUuid(new ParcelUuid(uuid));
+                JSArray serviceUuids = call.getArray("serviceUuids");
+                for (int i = 0; i < serviceUuids.length(); i++) {
+                    try {
+                        String uuidStr = serviceUuids.getString(i);
+                        UUID uuid = UUID.fromString(uuidStr);
+                        dataBuilder.addServiceUuid(new ParcelUuid(uuid));
+                    } catch (Exception e) {
+                        Log.w(TAG, "Invalid service UUID at index " + i, e);
+                    }
                 }
             }
 
@@ -399,7 +405,7 @@ public class BlePeripheralPlugin extends Plugin {
         call.resolve(result);
     }
 
-    private boolean checkPermissions(PluginCall call) {
+    protected boolean checkPermissions(PluginCall call) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             if (ActivityCompat.checkSelfPermission(getContext(), 
                     Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED ||
