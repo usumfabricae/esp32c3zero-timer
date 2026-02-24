@@ -25,6 +25,11 @@ export interface BlePeripheralPlugin {
   addCharacteristic(options: CharacteristicOptions): Promise<{ characteristicId: string }>;
 
   /**
+   * Start the GATT server (call after adding all services and characteristics)
+   */
+  startServer(): Promise<void>;
+
+  /**
    * Update characteristic value
    */
   updateCharacteristicValue(options: UpdateValueOptions): Promise<void>;
@@ -139,11 +144,6 @@ export interface CharacteristicOptions {
 
 export interface UpdateValueOptions {
   /**
-   * Service UUID
-   */
-  serviceUuid: string;
-
-  /**
    * Characteristic UUID
    */
   characteristicUuid: string;
@@ -155,11 +155,6 @@ export interface UpdateValueOptions {
 }
 
 export interface NotificationOptions {
-  /**
-   * Service UUID
-   */
-  serviceUuid: string;
-
   /**
    * Characteristic UUID
    */

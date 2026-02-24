@@ -56,18 +56,24 @@ export const useBLEPeripheral = () => {
   // Setup GATT services and characteristics
   const setupServices = useCallback(async () => {
     try {
+      console.log('[BLE Peripheral] Adding main service...');
       // Add main service
       await BlePeripheral.addService({
         uuid: SERVICE_UUID,
         primary: true
       });
 
+      console.log('[BLE Peripheral] Adding battery service...');
       // Add battery service
       await BlePeripheral.addService({
         uuid: BATTERY_SERVICE_UUID,
         primary: true
       });
 
+      // Wait a bit for services to be registered
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      console.log('[BLE Peripheral] Adding characteristics to main service...');
       // Temperature characteristic (READ, NOTIFY)
       await BlePeripheral.addCharacteristic({
         serviceUuid: SERVICE_UUID,
@@ -76,6 +82,7 @@ export const useBLEPeripheral = () => {
         permissions: BlePermission.READ,
         value: encodeTemperature(deviceState.temperature)
       });
+      console.log('[BLE Peripheral] Added temperature characteristic');
 
       // Current time characteristic (READ, NOTIFY)
       await BlePeripheral.addCharacteristic({
@@ -85,6 +92,7 @@ export const useBLEPeripheral = () => {
         permissions: BlePermission.READ,
         value: encodeCurrentTime(deviceState.currentTime)
       });
+      console.log('[BLE Peripheral] Added current time characteristic');
 
       // Relay state characteristic (READ, WRITE)
       await BlePeripheral.addCharacteristic({
@@ -94,6 +102,7 @@ export const useBLEPeripheral = () => {
         permissions: BlePermission.READ | BlePermission.WRITE,
         value: encodeRelayState(deviceState.relayState, deviceState.relayOverrideEndTime)
       });
+      console.log('[BLE Peripheral] Added relay state characteristic');
 
       // Schedule characteristic (READ, WRITE)
       await BlePeripheral.addCharacteristic({
@@ -103,6 +112,7 @@ export const useBLEPeripheral = () => {
         permissions: BlePermission.READ | BlePermission.WRITE,
         value: btoa('')
       });
+      console.log('[BLE Peripheral] Added schedule characteristic');
 
       // Temperature thresholds characteristic (READ, WRITE)
       await BlePeripheral.addCharacteristic({
@@ -112,6 +122,7 @@ export const useBLEPeripheral = () => {
         permissions: BlePermission.READ | BlePermission.WRITE,
         value: encodeTemperatureThresholds(deviceState.thresholds.high, deviceState.thresholds.low)
       });
+      console.log('[BLE Peripheral] Added temperature thresholds characteristic');
 
       // Temperature calibration characteristic (WRITE)
       await BlePeripheral.addCharacteristic({
@@ -121,6 +132,7 @@ export const useBLEPeripheral = () => {
         permissions: BlePermission.WRITE,
         value: btoa('')
       });
+      console.log('[BLE Peripheral] Added temperature calibration characteristic');
 
       // WiFi SSID characteristic (READ, WRITE)
       await BlePeripheral.addCharacteristic({
@@ -130,6 +142,7 @@ export const useBLEPeripheral = () => {
         permissions: BlePermission.READ | BlePermission.WRITE,
         value: btoa(deviceState.wifiSsid)
       });
+      console.log('[BLE Peripheral] Added WiFi SSID characteristic');
 
       // WiFi password characteristic (WRITE)
       await BlePeripheral.addCharacteristic({
@@ -139,6 +152,7 @@ export const useBLEPeripheral = () => {
         permissions: BlePermission.WRITE,
         value: btoa('')
       });
+      console.log('[BLE Peripheral] Added WiFi password characteristic');
 
       // BLE passkey characteristic (WRITE)
       await BlePeripheral.addCharacteristic({
@@ -148,7 +162,9 @@ export const useBLEPeripheral = () => {
         permissions: BlePermission.WRITE,
         value: btoa('')
       });
+      console.log('[BLE Peripheral] Added BLE passkey characteristic');
 
+      console.log('[BLE Peripheral] Adding characteristics to battery service...');
       // Battery level characteristic (READ, NOTIFY)
       await BlePeripheral.addCharacteristic({
         serviceUuid: BATTERY_SERVICE_UUID,
@@ -157,10 +173,16 @@ export const useBLEPeripheral = () => {
         permissions: BlePermission.READ,
         value: encodeBatteryLevel(deviceState.batteryLevel)
       });
+      console.log('[BLE Peripheral] Added battery level characteristic');
 
-      console.log('[BLE Peripheral] Services and characteristics configured');
+      // Start the GATT server now that all services and characteristics are configured
+      console.log('[BLE Peripheral] Starting GATT server...');
+      await BlePeripheral.startServer();
+
+      console.log('[BLE Peripheral] All services and characteristics configured successfully');
     } catch (err) {
       console.error('[BLE Peripheral] Setup services failed:', err);
+      setError(`Setup failed: ${err.message}`);
       throw err;
     }
   }, [deviceState]);
@@ -204,14 +226,12 @@ export const useBLEPeripheral = () => {
       
       const value = encodeTemperature(temperature);
       await BlePeripheral.updateCharacteristicValue({
-        serviceUuid: SERVICE_UUID,
         characteristicUuid: CHAR_TEMPERATURE,
         value
       });
 
       if (isConnected) {
         await BlePeripheral.sendNotification({
-          serviceUuid: SERVICE_UUID,
           characteristicUuid: CHAR_TEMPERATURE,
           value
         });
@@ -228,14 +248,12 @@ export const useBLEPeripheral = () => {
       
       const value = encodeCurrentTime(time);
       await BlePeripheral.updateCharacteristicValue({
-        serviceUuid: SERVICE_UUID,
         characteristicUuid: CHAR_CURRENT_TIME,
         value
       });
 
       if (isConnected) {
         await BlePeripheral.sendNotification({
-          serviceUuid: SERVICE_UUID,
           characteristicUuid: CHAR_CURRENT_TIME,
           value
         });
@@ -252,14 +270,12 @@ export const useBLEPeripheral = () => {
       
       const value = encodeBatteryLevel(level);
       await BlePeripheral.updateCharacteristicValue({
-        serviceUuid: BATTERY_SERVICE_UUID,
         characteristicUuid: CHAR_BATTERY_LEVEL,
         value
       });
 
       if (isConnected) {
         await BlePeripheral.sendNotification({
-          serviceUuid: BATTERY_SERVICE_UUID,
           characteristicUuid: CHAR_BATTERY_LEVEL,
           value
         });

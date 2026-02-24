@@ -189,16 +189,42 @@ public class BlePeripheralPlugin extends Plugin {
                 gattServer = bluetoothManager.openGattServer(getContext(), gattServerCallback);
             }
 
-            // Add service to GATT server
-            gattServer.addService(service);
+            // Don't add service to GATT server yet - wait for characteristics to be added
+            // Service will be added when startServer() is called
 
             JSObject result = new JSObject();
             result.put("serviceId", uuidStr);
-            Log.d(TAG, "Added service: " + uuidStr);
+            Log.d(TAG, "Created service (not yet added to GATT server): " + uuidStr);
             call.resolve(result);
         } catch (Exception e) {
             Log.e(TAG, "Add service failed", e);
             call.reject("Add service failed: " + e.getMessage());
+        }
+    }
+
+    @PluginMethod
+    public void startServer(PluginCall call) {
+        try {
+            if (gattServer == null) {
+                call.reject("GATT server not initialized");
+                return;
+            }
+
+            // Add all configured services to the GATT server
+            for (BluetoothGattService service : services.values()) {
+                boolean success = gattServer.addService(service);
+                if (success) {
+                    Log.d(TAG, "Added service to GATT server: " + service.getUuid());
+                } else {
+                    Log.e(TAG, "Failed to add service to GATT server: " + service.getUuid());
+                }
+            }
+
+            Log.d(TAG, "GATT server started with " + services.size() + " services");
+            call.resolve();
+        } catch (Exception e) {
+            Log.e(TAG, "Start server failed", e);
+            call.reject("Start server failed: " + e.getMessage());
         }
     }
 
