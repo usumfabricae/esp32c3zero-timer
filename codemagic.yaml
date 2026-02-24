@@ -55,13 +55,39 @@ workflows:
       - name: Install BLE Peripheral Plugin
         script: |
           cd webclient
-          # Install plugin from local directory
+          
+          # Method 1: Try npm install
+          echo "=== Attempting npm install ==="
           npm install ./ble-peripheral-plugin --no-save
+          
+          # Method 2: Manual copy if npm install didn't work
+          if [ ! -d "node_modules/@superfede/capacitor-ble-peripheral/android" ]; then
+            echo "=== npm install didn't work, copying manually ==="
+            mkdir -p node_modules/@superfede
+            cp -r ble-peripheral-plugin node_modules/@superfede/capacitor-ble-peripheral
+            echo "✓ Plugin copied manually"
+          fi
           
           # Verify plugin is installed
           if [ -d "node_modules/@superfede/capacitor-ble-peripheral" ]; then
-            echo "✓ Plugin installed successfully"
-            ls -la node_modules/@superfede/capacitor-ble-peripheral/src/
+            echo "✓ Plugin directory exists"
+            
+            # Check for android folder
+            if [ -d "node_modules/@superfede/capacitor-ble-peripheral/android" ]; then
+              echo "✓ Android folder exists"
+              ls -la node_modules/@superfede/capacitor-ble-peripheral/android/
+            else
+              echo "✗ Android folder missing!"
+              exit 1
+            fi
+            
+            # Check for package.json
+            if [ -f "node_modules/@superfede/capacitor-ble-peripheral/package.json" ]; then
+              echo "✓ package.json exists"
+            else
+              echo "✗ package.json missing!"
+              exit 1
+            fi
           else
             echo "✗ Plugin installation failed"
             exit 1
