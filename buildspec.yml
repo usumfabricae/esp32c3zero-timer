@@ -1,0 +1,108 @@
+version: 0.2
+
+# AWS CodeBuild specification for Android builds
+# Uses pre-built Android Docker image from Docker Hub
+
+env:
+  variables:
+    NODE_VERSION: "22"
+  parameter-store:
+    # Optional: Store sensitive values in AWS Systems Manager Parameter Store
+    # KEYSTORE_PASSWORD: /codebuild/android/keystore-password
+    # KEY_PASSWORD: /codebuild/android/key-password
+
+phases:
+  install:
+    commands:
+      - echo "Using pre-built Android Docker image"
+      - echo "Node version:" && node --version
+      - echo "NPM version:" && npm --version
+      - echo "Java version:" && java -version
+      - echo "Android SDK:" && echo $ANDROID_HOME
+      
+      # Install Node.js 22 if not present or wrong version
+      - |
+        if ! command -v node &> /dev/null || [[ $(node -v | cut -d'v' -f2 | cut -d'.' -f1) -lt 22 ]]; then
+          echo "Installing Node.js 22..."
+          curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+          apt-get install -y nodejs
+        fi
+
+  pre_build:
+    commands:
+      - echo "Pre-build phase started on $(date)"
+      - node --version
+      - npm --version
+      - java -version
+
+  build:
+    commands:
+      - echo "Build phase started on $(date)"
+      
+      # Install npm dependencies
+      - cd webclient
+      - npm ci
+      
+      # Build main app
+      - echo "Building main application..."
+      - CAPACITOR=true npm run build
+      
+      # Sync Capacitor for main app
+      - npx cap sync android
+      
+      # Set up local.properties for main app
+      - echo "sdk.dir=$ANDROID_HOME" > android/local.properties
+      
+      # Build main APK
+      - cd android
+      - chmod +x gradlew
+      - ./gradlew assembleDebug
+      - cd ..
+      
+      # Copy main APK to output
+      - mkdir -p ../build-output
+      - cp android/app/build/outputs/apk/debug/app-debug.apk ../build-output/ble-timer-debug.apk
+      
+      # Build peripheral demo
+      - echo "Building peripheral demo..."
+      - npm install ./ble-peripheral-plugin
+      - npm run build:peripheral
+      
+      # Remove old android folders
+      - rm -rf android-peripheral
+      
+      # Add Android platform for peripheral
+      - npx cap add android --capacitor-config capacitor-peripheral.config.json
+      - mv android android-peripheral
+      
+      # Set up local.properties for peripheral
+      - echo "sdk.dir=$ANDROID_HOME" > android-peripheral/local.properties
+      
+      # Build peripheral APK
+      - cd android-peripheral
+      - chmod +x gradlew
+      - ./gradlew assembleDebug
+      - cd ..
+      
+      # Copy peripheral APK to output
+      - cp android-peripheral/app/build/outputs/apk/debug/app-debug.apk ../build-output/ble-peripheral-demo-debug.apk
+      
+      - cd ..
+      - echo "Build completed on $(date)"
+
+  post_build:
+    commands:
+      - echo "Post-build phase started on $(date)"
+      - ls -lh build-output/
+      - echo "Build completed successfully!"
+
+artifacts:
+  files:
+    - 'build-output/*.apk'
+  name: android-apks-$(date +%Y%m%d-%H%M%S)
+
+cache:
+  paths:
+    - 'webclient/node_modules/**/*'
+    - '/root/.gradle/**/*'
+    - '/root/.npm/**/*'

@@ -20,6 +20,31 @@ workflows:
         - pattern: 'main'
           include: true
           source: true
+  
+  android-peripheral-demo:
+    name: Android BLE Peripheral Demo
+    max_build_duration: 60
+    instance_type: mac_mini_m1
+    
+    environment:
+      vars:
+        PACKAGE_NAME: "net.superfede.BlePeripheralDemo"
+        APP_NAME: "BLE Peripheral Demo"
+      node: 22
+      java: 21
+      
+    triggering:
+      events:
+        - push
+        - tag
+        - pull_request
+      branch_patterns:
+        - pattern: 'main'
+          include: true
+          source: true
+        - pattern: 'peripheral-demo'
+          include: true
+          source: true
       
     scripts:
       - name: Install npm dependencies
@@ -27,50 +52,63 @@ workflows:
           cd webclient
           npm ci
           
-      - name: Initialize Capacitor (if not exists)
+      - name: Install BLE Peripheral Plugin
         script: |
           cd webclient
-          # Only init if capacitor.config.json doesn't exist
-          if [ ! -f "capacitor.config.json" ]; then
-            npx cap init "$APP_NAME" "$PACKAGE_NAME" --web-dir=dist
-          else
-            echo "Capacitor already initialized"
-          fi
+          npm install ./ble-peripheral-plugin
           
-      - name: Add Android platform (if not exists)
+      - name: Build Peripheral Demo Web App
         script: |
           cd webclient
-          # Only add android if folder doesn't exist
-          if [ ! -d "android" ]; then
-            npx cap add android
-            # Add Bluetooth permissions
-            node setup-android-permissions.mjs
-          else
-            echo "Android platform already added"
-          fi
+          CAPACITOR=true npm run build:peripheral
           
-      - name: Build web app
+      - name: Verify Web Build
         script: |
           cd webclient
-          CAPACITOR=true npm run build
+          echo "=== Checking dist-peripheral ==="
+          ls -la dist-peripheral/
+          echo ""
+          echo "=== Checking index.html ==="
+          cat dist-peripheral/index.html
+          echo ""
+          echo "=== Checking for main-peripheral reference ==="
+          grep -i "main-peripheral" dist-peripheral/index.html || echo "WARNING: main-peripheral not found in index.html"
           
-      - name: Sync Capacitor
+      - name: Initialize Capacitor for Peripheral Demo
         script: |
           cd webclient
-          npx cap sync android
+          # Remove existing android folders to start fresh
+          rm -rf android android-peripheral
           
-      - name: Set up local.properties
-        script: |
-          echo "sdk.dir=$ANDROID_SDK_ROOT" > webclient/android/local.properties
+          # Initialize with peripheral config
+          npx cap add android --capacitor-config capacitor-peripheral.config.json
           
-      - name: Build Android Debug APK
+          # Rename to android-peripheral
+          mv android android-peripheral
+          
+      - name: Update Android Manifest for Peripheral
         script: |
-          cd webclient/android
+          cd webclient/android-peripheral/app/src/main
+          # Add BLE peripheral permissions to manifest
+          perl -i -pe 's|(<manifest[^>]*>)|$1\n    <uses-permission android:name="android.permission.BLUETOOTH" />\n    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />\n    <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />\n    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />\n    <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />|' AndroidManifest.xml
+          
+      - name: Set up local.properties for Peripheral
+        script: |
+          echo "sdk.dir=$ANDROID_SDK_ROOT" > webclient/android-peripheral/local.properties
+          
+      - name: Build Peripheral Demo APK
+        script: |
+          cd webclient/android-peripheral
           chmod +x gradlew
           ./gradlew assembleDebug
           
+      - name: Rename APK
+        script: |
+          cd webclient/android-peripheral/app/build/outputs/apk/debug
+          mv app-debug.apk ble-peripheral-demo-debug.apk
+          
     artifacts:
-      - webclient/android/app/build/outputs/**/*.apk
+      - webclient/android-peripheral/app/build/outputs/**/*.apk
       
     publishing:
       email:
