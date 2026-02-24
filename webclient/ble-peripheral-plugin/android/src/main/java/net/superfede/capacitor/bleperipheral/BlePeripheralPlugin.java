@@ -97,10 +97,6 @@ public class BlePeripheralPlugin extends Plugin {
 
     @PluginMethod
     public void startAdvertising(PluginCall call) {
-        if (!checkPermissions(call)) {
-            return;
-        }
-
         try {
             String name = call.getString("name");
             if (name == null || name.isEmpty()) {
@@ -157,10 +153,6 @@ public class BlePeripheralPlugin extends Plugin {
 
     @PluginMethod
     public void stopAdvertising(PluginCall call) {
-        if (!checkPermissions(call)) {
-            return;
-        }
-
         try {
             if (bluetoothLeAdvertiser != null) {
                 bluetoothLeAdvertiser.stopAdvertising(advertiseCallback);
@@ -175,10 +167,6 @@ public class BlePeripheralPlugin extends Plugin {
 
     @PluginMethod
     public void addService(PluginCall call) {
-        if (!checkPermissions(call)) {
-            return;
-        }
-
         try {
             String uuidStr = call.getString("uuid");
             if (uuidStr == null) {
@@ -216,10 +204,6 @@ public class BlePeripheralPlugin extends Plugin {
 
     @PluginMethod
     public void addCharacteristic(PluginCall call) {
-        if (!checkPermissions(call)) {
-            return;
-        }
-
         try {
             String serviceUuid = call.getString("serviceUuid");
             String charUuid = call.getString("uuid");
@@ -276,10 +260,6 @@ public class BlePeripheralPlugin extends Plugin {
 
     @PluginMethod
     public void updateCharacteristicValue(PluginCall call) {
-        if (!checkPermissions(call)) {
-            return;
-        }
-
         try {
             String charUuid = call.getString("characteristicUuid");
             String valueBase64 = call.getString("value");
@@ -308,10 +288,6 @@ public class BlePeripheralPlugin extends Plugin {
 
     @PluginMethod
     public void sendNotification(PluginCall call) {
-        if (!checkPermissions(call)) {
-            return;
-        }
-
         try {
             String charUuid = call.getString("characteristicUuid");
             String valueBase64 = call.getString("value");
@@ -368,10 +344,6 @@ public class BlePeripheralPlugin extends Plugin {
 
     @PluginMethod
     public void removeService(PluginCall call) {
-        if (!checkPermissions(call)) {
-            return;
-        }
-
         try {
             String serviceId = call.getString("serviceId");
             if (serviceId == null) {
@@ -406,17 +378,17 @@ public class BlePeripheralPlugin extends Plugin {
         call.resolve(result);
     }
 
-    public boolean checkPermissions(PluginCall call) {
+    public void checkPermissions(PluginCall call) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             if (ActivityCompat.checkSelfPermission(getContext(), 
                     Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED ||
                 ActivityCompat.checkSelfPermission(getContext(), 
                     Manifest.permission.BLUETOOTH_ADVERTISE) != PackageManager.PERMISSION_GRANTED) {
                 call.reject("Bluetooth permissions not granted");
-                return false;
+                return;
             }
         }
-        return true;
+        call.resolve();
     }
 
     private final AdvertiseCallback advertiseCallback = new AdvertiseCallback() {
