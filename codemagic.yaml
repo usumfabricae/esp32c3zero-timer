@@ -52,7 +52,7 @@ workflows:
       - name: Build web app
         script: |
           cd webclient
-          npm run build
+          CAPACITOR=true npm run build
           
       - name: Sync Capacitor
         script: |

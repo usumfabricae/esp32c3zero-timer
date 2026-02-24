@@ -3,9 +3,10 @@ import react from '@vitejs/plugin-react'
 import mkcert from 'vite-plugin-mkcert'
 
 // https://vitejs.dev/config/
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   plugins: [react(), mkcert()],
-  base: '/esp32c3zero-timer/',
+  // Use root path for Capacitor builds, GitHub Pages path for web
+  base: process.env.CAPACITOR ? '/' : '/esp32c3zero-timer/',
   server: {
     https: true,
     port: 3000,
@@ -18,4 +19,4 @@ export default defineConfig({
   },
   // Ensure PWA files are copied to dist
   publicDir: 'public'
-})
+}))
