@@ -9,7 +9,7 @@ workflows:
         PACKAGE_NAME: "net.superfede.BleTimerWebView"
         APP_NAME: "BLE Timer"
       node: 22
-      java: 17
+      java: 21
       
     triggering:
       events:
