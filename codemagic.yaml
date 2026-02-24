@@ -102,11 +102,25 @@ workflows:
           # Remove existing android folders to start fresh
           rm -rf android android-peripheral
           
-          # Initialize with peripheral config
-          npx cap add android --capacitor-config capacitor-peripheral.config.json
+          # Temporarily rename the config files
+          mv capacitor.config.json capacitor.config.json.backup
+          mv capacitor-peripheral.config.json capacitor.config.json
           
-          # Rename to android-peripheral
+          # Add Android platform (will use capacitor.config.json)
+          npx cap add android
+          
+          # Sync Capacitor
+          npx cap sync android
+          
+          # Rename android folder to android-peripheral
           mv android android-peripheral
+          
+          # Restore original config files
+          mv capacitor.config.json capacitor-peripheral.config.json
+          mv capacitor.config.json.backup capacitor.config.json
+          
+          echo "✓ Android platform added and synced for peripheral demo"
+          ls -la android-peripheral/
           
       - name: Update Android Manifest for Peripheral
         script: |
