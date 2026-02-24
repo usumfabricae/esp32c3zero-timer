@@ -39,9 +39,6 @@ workflows:
         - tag
         - pull_request
       branch_patterns:
-        - pattern: 'main'
-          include: true
-          source: true
         - pattern: 'reverse'
           include: true
           source: true
@@ -132,13 +129,7 @@ workflows:
           # Sync Capacitor to copy new web assets
           npx cap sync android
           
-          # Restore original dist
-          mv dist dist-peripheral
-          if [ -d "dist-backup" ]; then
-            mv dist-backup dist
-          fi
-          
-          # Build APK
+          # Build APK (while peripheral assets are in place)
           cd android
           chmod +x gradlew
           ./gradlew assembleDebug
@@ -148,15 +139,16 @@ workflows:
           mkdir -p ../build-output
           cp android/app/build/outputs/apk/debug/app-debug.apk ../build-output/ble-peripheral-demo-debug.apk
           
+          # Now restore original dist (after APK is built)
+          mv dist dist-peripheral
+          if [ -d "dist-backup" ]; then
+            mv dist-backup dist
+          fi
+          
           cd ..
           echo "✓ Peripheral demo APK built successfully"
           
-      - name: Rename APK
-        script: |
-          cd webclient
-          mkdir -p ../build-output
-          cp android/app/build/outputs/apk/debug/app-debug.apk ../build-output/ble-peripheral-demo-debug.apk
-          echo "✓ APK renamed and ready"
+
           
     artifacts:
       - build-output/*.apk
