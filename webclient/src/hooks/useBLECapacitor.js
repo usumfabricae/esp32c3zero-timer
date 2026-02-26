@@ -149,9 +149,11 @@ export const useBLECapacitor = () => {
       console.log('[Capacitor BLE] Scanning for saved device:', deviceAddress);
       
       // Start scanning for the specific device
+      // Don't filter by service in scan - ESP32 might not advertise service UUID
       await BleClient.requestLEScan(
         {
-          services: [SERVICE_UUID],
+          // No service filter - scan for all devices
+          allowDuplicates: false
         },
         async (result) => {
           // Ignore if device already found or processed
