@@ -1,5 +1,4 @@
 import { useState, useCallback, useEffect } from 'react';
-import { Capacitor } from '@capacitor/core';
 import { BleClient } from '@capacitor-community/bluetooth-le';
 import DataFormatter from '../utils/dataFormatter.js';
 
@@ -11,11 +10,10 @@ const CHAR_CURRENT_TIME = '00002a2b-0000-1000-8000-00805f9b34fb';
 const CHAR_RELAY_STATE = '0000ff02-0000-1000-8000-00805f9b34fb';
 const CHAR_SCHEDULE = '0000ff05-0000-1000-8000-00805f9b34fb';
 const CHAR_TEMP_THRESHOLDS = '0000ff06-0000-1000-8000-00805f9b34fb';
-const CHAR_TEMP_CALIBRATION = '0000ff07-0000-1000-8000-00805f9b34fb';
-const CHAR_WIFI_SSID = '0000ff08-0000-1000-8000-00805f9b34fb';
-const CHAR_WIFI_PASSWORD = '0000ff09-0000-1000-8000-00805f9b34fb';
-const CHAR_BLE_PASSKEY = '0000ff0a-0000-1000-8000-00805f9b34fb';
 const CHAR_BATTERY_LEVEL = '00002a19-0000-1000-8000-00805f9b34fb';
+
+// Storage key for saved device
+const STORAGE_KEY_DEVICE_ID = 'ble_saved_device_id';
 
 // Convert short UUID to full UUID format
 const toFullUUID = (shortUuid) => {
@@ -31,6 +29,7 @@ export const useBLECapacitor = () => {
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState(null);
   const [deviceId, setDeviceId] = useState(null);
+  const [savedDeviceId, setSavedDeviceId] = useState(null);
   const [deviceData, setDeviceData] = useState({
     temperature: null,
     currentTime: null,
@@ -42,6 +41,23 @@ export const useBLECapacitor = () => {
     batteryVoltage: null,
     wifiSsid: null
   });
+
+  // Load saved device ID from localStorage
+  useEffect(() => {
+    const loadSavedDevice = () => {
+      try {
+        const saved = localStorage.getItem(STORAGE_KEY_DEVICE_ID);
+        if (saved) {
+          setSavedDeviceId(saved);
+          console.log('[Capacitor BLE] Loaded saved device:', saved);
+        }
+      } catch (err) {
+        console.error('[Capacitor BLE] Failed to load saved device:', err);
+      }
+    };
+
+    loadSavedDevice();
+  }, []);
 
   // Initialize BLE client on mount
   useEffect(() => {
@@ -63,15 +79,120 @@ export const useBLECapacitor = () => {
         BleClient.disconnect(deviceId).catch(console.error);
       }
     };
+  }, [deviceId]);
+
+  // Background reconnect to saved device using requestLEScan
+  const reconnectToSavedDevice = useCallback(async (deviceAddress) => {
+    setIsConnecting(true);
+    setError(null);
+
+    let scanTimeout = null;
+    let deviceFound = false;
+    let isScanning = false;
+
+    const cleanup = async () => {
+      // Clear timeout
+      if (scanTimeout) {
+        clearTimeout(scanTimeout);
+        scanTimeout = null;
+      }
+      
+      // Stop scanning if still active
+      if (isScanning) {
+        try {
+          await BleClient.stopLEScan();
+          isScanning = false;
+          console.log('[Capacitor BLE] Scan stopped during cleanup');
+        } catch (err) {
+          console.error('[Capacitor BLE] Failed to stop scan during cleanup:', err);
+        }
+      }
+    };
+
+    try {
+      console.log('[Capacitor BLE] Scanning for saved device:', deviceAddress);
+      
+      // Start scanning for the specific device
+      await BleClient.requestLEScan(
+        {
+          services: [SERVICE_UUID],
+        },
+        async (result) => {
+          // Ignore if device already found or processed
+          if (deviceFound) {
+            return;
+          }
+
+          // Check if this is our saved device
+          if (result.device.deviceId === deviceAddress) {
+            deviceFound = true;
+            console.log('[Capacitor BLE] Found saved device:', result.device.deviceId);
+            
+            // Stop scanning immediately
+            await cleanup();
+            
+            // Connect to the device
+            try {
+              await BleClient.connect(result.device.deviceId, (disconnectedDeviceId) => {
+                console.log('[Capacitor BLE] Device disconnected:', disconnectedDeviceId);
+                setIsConnected(false);
+                setDeviceId(null);
+              });
+              
+              console.log('[Capacitor BLE] Reconnected to saved device');
+              setDeviceId(result.device.deviceId);
+              setIsConnected(true);
+              setIsConnecting(false);
+            } catch (err) {
+              console.error('[Capacitor BLE] Reconnection failed:', err);
+              setError(err.message || 'Reconnection failed');
+              setIsConnecting(false);
+            }
+          }
+        }
+      );
+
+      isScanning = true;
+
+      // Stop scanning after 10 seconds if device not found
+      scanTimeout = setTimeout(async () => {
+        if (!deviceFound) {
+          console.log('[Capacitor BLE] Scan timeout - device not found');
+          await cleanup();
+          setIsConnecting(false);
+          setError('Device not found');
+        }
+      }, 10000);
+
+    } catch (err) {
+      console.error('[Capacitor BLE] Scan failed:', err);
+      await cleanup();
+      setError(err.message || 'Scan failed');
+      setIsConnecting(false);
+    }
   }, []);
 
-  // Connect to device
+  // Connect to device (first time or manual)
   const connect = useCallback(async () => {
+    // Prevent multiple simultaneous connection attempts
+    if (isConnecting) {
+      console.log('[Capacitor BLE] Connection already in progress');
+      return;
+    }
+
     setIsConnecting(true);
     setError(null);
 
     try {
-      console.log('[Capacitor BLE] Requesting device...');
+      // If we have a saved device, try to reconnect in background
+      if (savedDeviceId) {
+        console.log('[Capacitor BLE] Attempting background reconnect...');
+        await reconnectToSavedDevice(savedDeviceId);
+        return;
+      }
+
+      // First time connection - show device picker
+      console.log('[Capacitor BLE] Requesting device (first time)...');
       
       // Request device with filters
       const device = await BleClient.requestDevice({
@@ -82,14 +203,26 @@ export const useBLECapacitor = () => {
 
       console.log('[Capacitor BLE] Device found:', device.deviceId);
       
-      // Connect to device
-      await BleClient.connect(device.deviceId, (disconnectedDeviceId) => {
+      // Connect to device with timeout
+      const connectPromise = BleClient.connect(device.deviceId, (disconnectedDeviceId) => {
         console.log('[Capacitor BLE] Device disconnected:', disconnectedDeviceId);
         setIsConnected(false);
         setDeviceId(null);
       });
 
+      // Add connection timeout (15 seconds)
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Connection timeout')), 15000);
+      });
+
+      await Promise.race([connectPromise, timeoutPromise]);
+
       console.log('[Capacitor BLE] Connected to device');
+      
+      // Save device ID for future connections
+      localStorage.setItem(STORAGE_KEY_DEVICE_ID, device.deviceId);
+      setSavedDeviceId(device.deviceId);
+      
       setDeviceId(device.deviceId);
       setIsConnected(true);
       setIsConnecting(false);
@@ -99,23 +232,53 @@ export const useBLECapacitor = () => {
       setError(err.message || 'Connection failed');
       setIsConnecting(false);
       setIsConnected(false);
+      
+      // If connection failed, try to disconnect to clean up
+      try {
+        if (deviceId) {
+          await BleClient.disconnect(deviceId);
+        }
+      } catch (disconnectErr) {
+        console.error('[Capacitor BLE] Cleanup disconnect failed:', disconnectErr);
+      }
     }
-  }, []);
+  }, [savedDeviceId, reconnectToSavedDevice, isConnecting, deviceId]);
 
   // Disconnect from device
   const disconnect = useCallback(async () => {
-    if (!deviceId) return;
+    if (!deviceId) {
+      // Reset state even if no device ID
+      setIsConnected(false);
+      setIsConnecting(false);
+      return;
+    }
 
     try {
       await BleClient.disconnect(deviceId);
       setIsConnected(false);
       setDeviceId(null);
+      setIsConnecting(false);
       console.log('[Capacitor BLE] Disconnected');
     } catch (err) {
       console.error('[Capacitor BLE] Disconnect failed:', err);
+      // Force reset state even if disconnect fails
+      setIsConnected(false);
+      setDeviceId(null);
+      setIsConnecting(false);
       setError(err.message || 'Disconnect failed');
     }
   }, [deviceId]);
+
+  // Forget saved device (for testing or switching devices)
+  const forgetDevice = useCallback(() => {
+    try {
+      localStorage.removeItem(STORAGE_KEY_DEVICE_ID);
+      setSavedDeviceId(null);
+      console.log('[Capacitor BLE] Forgot saved device');
+    } catch (err) {
+      console.error('[Capacitor BLE] Failed to forget device:', err);
+    }
+  }, []);
 
   // Read characteristic
   const readCharacteristic = useCallback(async (charUuid) => {
@@ -352,6 +515,8 @@ export const useBLECapacitor = () => {
     deviceData,
     connect,
     disconnect,
+    forgetDevice,
+    hasSavedDevice: !!savedDeviceId,
     readTemperature,
     readCurrentTime,
     readRelayState,
