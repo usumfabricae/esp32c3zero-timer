@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { BleClient } from '@capacitor-community/bluetooth-le';
 import DataFormatter from '../utils/dataFormatter.js';
 
@@ -42,6 +42,11 @@ export const useBLECapacitor = () => {
     wifiSsid: null
   });
 
+  // Use refs to track scan state across async callbacks
+  const scanTimeoutRef = useRef(null);
+  const isScanningRef = useRef(false);
+  const deviceFoundRef = useRef(false);
+
   // Load saved device ID from localStorage
   useEffect(() => {
     const loadSavedDevice = () => {
@@ -75,9 +80,32 @@ export const useBLECapacitor = () => {
 
     return () => {
       // Cleanup on unmount
-      if (deviceId) {
-        BleClient.disconnect(deviceId).catch(console.error);
-      }
+      const cleanup = async () => {
+        // Clear timeout
+        if (scanTimeoutRef.current) {
+          clearTimeout(scanTimeoutRef.current);
+        }
+        
+        // Stop any ongoing scan
+        if (isScanningRef.current) {
+          try {
+            await BleClient.stopLEScan();
+          } catch (err) {
+            console.error('[Capacitor BLE] Cleanup scan stop failed:', err);
+          }
+        }
+        
+        // Disconnect device
+        if (deviceId) {
+          try {
+            await BleClient.disconnect(deviceId);
+          } catch (err) {
+            console.error('[Capacitor BLE] Cleanup disconnect failed:', err);
+          }
+        }
+      };
+      
+      cleanup();
     };
   }, [deviceId]);
 
@@ -86,25 +114,33 @@ export const useBLECapacitor = () => {
     setIsConnecting(true);
     setError(null);
 
-    let scanTimeout = null;
-    let deviceFound = false;
-    let isScanning = false;
+    // Reset refs
+    deviceFoundRef.current = false;
+    isScanningRef.current = false;
+    
+    // Clear any existing timeout
+    if (scanTimeoutRef.current) {
+      clearTimeout(scanTimeoutRef.current);
+      scanTimeoutRef.current = null;
+    }
 
     const cleanup = async () => {
+      console.log('[Capacitor BLE] Cleanup called');
+      
       // Clear timeout
-      if (scanTimeout) {
-        clearTimeout(scanTimeout);
-        scanTimeout = null;
+      if (scanTimeoutRef.current) {
+        clearTimeout(scanTimeoutRef.current);
+        scanTimeoutRef.current = null;
       }
       
       // Stop scanning if still active
-      if (isScanning) {
+      if (isScanningRef.current) {
         try {
           await BleClient.stopLEScan();
-          isScanning = false;
-          console.log('[Capacitor BLE] Scan stopped during cleanup');
+          isScanningRef.current = false;
+          console.log('[Capacitor BLE] Scan stopped');
         } catch (err) {
-          console.error('[Capacitor BLE] Failed to stop scan during cleanup:', err);
+          console.error('[Capacitor BLE] Failed to stop scan:', err);
         }
       }
     };
@@ -119,13 +155,13 @@ export const useBLECapacitor = () => {
         },
         async (result) => {
           // Ignore if device already found or processed
-          if (deviceFound) {
+          if (deviceFoundRef.current) {
             return;
           }
 
           // Check if this is our saved device
           if (result.device.deviceId === deviceAddress) {
-            deviceFound = true;
+            deviceFoundRef.current = true;
             console.log('[Capacitor BLE] Found saved device:', result.device.deviceId);
             
             // Stop scanning immediately
@@ -152,11 +188,11 @@ export const useBLECapacitor = () => {
         }
       );
 
-      isScanning = true;
+      isScanningRef.current = true;
 
       // Stop scanning after 10 seconds if device not found
-      scanTimeout = setTimeout(async () => {
-        if (!deviceFound) {
+      scanTimeoutRef.current = setTimeout(async () => {
+        if (!deviceFoundRef.current) {
           console.log('[Capacitor BLE] Scan timeout - device not found');
           await cleanup();
           setIsConnecting(false);
