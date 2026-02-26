@@ -190,15 +190,16 @@ export const useBLECapacitor = () => {
 
       isScanningRef.current = true;
 
-      // Stop scanning after 10 seconds if device not found
+      // Stop scanning after 70 seconds if device not found
+      // ESP32 wakes every 60 seconds, so 70s ensures we catch at least one wake cycle
       scanTimeoutRef.current = setTimeout(async () => {
         if (!deviceFoundRef.current) {
-          console.log('[Capacitor BLE] Scan timeout - device not found');
+          console.log('[Capacitor BLE] Scan timeout - device not found after 70s');
           await cleanup();
           setIsConnecting(false);
-          setError('Device not found');
+          setError('Device not found after 70 seconds');
         }
-      }, 10000);
+      }, 70000);
 
     } catch (err) {
       console.error('[Capacitor BLE] Scan failed:', err);

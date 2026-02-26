@@ -140,7 +140,7 @@ function App() {
   const handleConnect = async () => {
     setGlobalNotification({
       type: 'loading',
-      message: 'Connecting to device...'
+      message: 'Scanning for device... (up to 70 seconds - device wakes every 60s)'
     });
 
     try {
@@ -236,6 +236,7 @@ function App() {
     <div className="app">
       <Header 
         isConnected={ble.isConnected}
+        isConnecting={ble.isConnecting}
         onMenuClick={handleMenuToggle}
         onConnect={handleConnect}
         onDisconnect={handleDisconnect}

@@ -1,7 +1,7 @@
 import React from 'react'
 import './Header.css'
 
-function Header({ isConnected, onMenuClick, onConnect, onDisconnect }) {
+function Header({ isConnected, isConnecting, onMenuClick, onConnect, onDisconnect }) {
   return (
     <header className="header">
       <button 
@@ -15,18 +15,19 @@ function Header({ isConnected, onMenuClick, onConnect, onDisconnect }) {
       <h1 className="app-title">ESP32 Timer Control</h1>
       
       <div className="header-right">
-        <div className={`connection-status ${isConnected ? 'connected' : 'disconnected'}`}>
+        <div className={`connection-status ${isConnected ? 'connected' : isConnecting ? 'connecting' : 'disconnected'}`}>
           <span className="status-indicator"></span>
           <span className="status-text">
-            {isConnected ? 'Connected' : 'Disconnected'}
+            {isConnected ? 'Connected' : isConnecting ? 'Connecting...' : 'Disconnected'}
           </span>
         </div>
         
         <button 
-          className={`connect-button ${isConnected ? 'disconnect' : ''}`}
+          className={`connect-button ${isConnected ? 'disconnect' : ''} ${isConnecting ? 'connecting' : ''}`}
           onClick={isConnected ? onDisconnect : onConnect}
+          disabled={isConnecting}
         >
-          {isConnected ? 'Disconnect' : 'Connect'}
+          {isConnected ? 'Disconnect' : isConnecting ? 'Connecting...' : 'Connect'}
         </button>
       </div>
     </header>
