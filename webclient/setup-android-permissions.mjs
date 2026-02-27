@@ -1,70 +1,58 @@
-#!/usr/bin/env node
+﻿#!/usr/bin/env node
 
 /**
- * Script to add Bluetooth permissions to AndroidManifest.xml
- * Run after: npx cap add android
+ * Script to inject Bluetooth permissions into AndroidManifest.xml
+ * This is needed because Capacitor doesn't automatically add all required permissions
+ * for Android 12+ (API 31+) Bluetooth functionality
  */
 
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import { readFileSync, writeFileSync } from 'fs';
+import { join } from 'path';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const manifestPath = join(process.cwd(), 'android', 'app', 'src', 'main', 'AndroidManifest.xml');
 
-const manifestPath = path.join(__dirname, 'android', 'app', 'src', 'main', 'AndroidManifest.xml');
+console.log('Adding Bluetooth permissions to AndroidManifest.xml...');
 
-// Check if android folder exists
-if (!fs.existsSync(path.join(__dirname, 'android'))) {
-  console.log('❌ Android folder not found. Run "npx cap add android" first.');
-  process.exit(1);
-}
-
-// Check if manifest exists
-if (!fs.existsSync(manifestPath)) {
-  console.log('❌ AndroidManifest.xml not found at:', manifestPath);
-  process.exit(1);
-}
-
-// Read manifest
-let manifest = fs.readFileSync(manifestPath, 'utf8');
-
-// Permissions to add
-const permissions = [
-  '    <!-- Bluetooth permissions for Android 12+ -->',
-  '    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" />',
-  '    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />',
-  '    ',
-  '    <!-- Bluetooth permissions for Android 11 and below -->',
-  '    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />',
-  '    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />',
-  '    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="30" />'
-];
-
-// Check if permissions already exist
-if (manifest.includes('BLUETOOTH_SCAN')) {
-  console.log('✅ Bluetooth permissions already present in AndroidManifest.xml');
+try {
+  let manifest = readFileSync(manifestPath, 'utf8');
+  
+  // Check if permissions are already added
+  if (manifest.includes('android.permission.BLUETOOTH_SCAN')) {
+    console.log('Bluetooth permissions already present, skipping...');
+    process.exit(0);
+  }
+  
+  // Define the permissions to add
+  const permissions = `
+    <!-- Bluetooth permissions for Android 12+ (API 31+) -->
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
+        android:usesPermissionFlags="neverForLocation" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    
+    <!-- Legacy Bluetooth permissions for Android 11 and below -->
+    <uses-permission android:name="android.permission.BLUETOOTH" 
+        android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" 
+        android:maxSdkVersion="30" />
+    
+    <!-- Location permission required for BLE plugin initialization -->
+    <!-- Note: On Android 12+, BLUETOOTH_SCAN with neverForLocation flag means this won't actually be used for location -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    
+    <!-- Bluetooth feature requirement -->
+    <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
+`;
+  
+  // Find the closing </manifest> tag and insert permissions before it
+  manifest = manifest.replace('</manifest>', `${permissions}\n</manifest>`);
+  
+  // Write the modified manifest back
+  writeFileSync(manifestPath, manifest, 'utf8');
+  
+  console.log('Ô£ô Bluetooth permissions added successfully');
   process.exit(0);
-}
-
-// Find the manifest tag and add permissions after it
-const manifestTagRegex = /<manifest[^>]*>/;
-const match = manifest.match(manifestTagRegex);
-
-if (!match) {
-  console.log('❌ Could not find <manifest> tag in AndroidManifest.xml');
+  
+} catch (error) {
+  console.error('Error adding Bluetooth permissions:', error.message);
   process.exit(1);
 }
-
-// Insert permissions after manifest tag
-const insertPosition = match.index + match[0].length;
-const permissionsBlock = '\n' + permissions.join('\n') + '\n';
-manifest = manifest.slice(0, insertPosition) + permissionsBlock + manifest.slice(insertPosition);
-
-// Write back to file
-fs.writeFileSync(manifestPath, manifest, 'utf8');
-
-console.log('✅ Bluetooth permissions added to AndroidManifest.xml');
-console.log('');
-console.log('Added permissions:');
-permissions.forEach(p => console.log(p));

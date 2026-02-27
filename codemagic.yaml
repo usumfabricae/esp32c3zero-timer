@@ -1,4 +1,4 @@
-workflows:
+﻿workflows:
   android-capacitor-workflow:
     name: Android Capacitor Build
     max_build_duration: 60
@@ -43,11 +43,14 @@ workflows:
           # Only add android if folder doesn't exist
           if [ ! -d "android" ]; then
             npx cap add android
-            # Add Bluetooth permissions
-            node setup-android-permissions.mjs
           else
             echo "Android platform already added"
           fi
+          
+      - name: Add Bluetooth permissions to AndroidManifest
+        script: |
+          cd webclient
+          node setup-android-permissions.mjs
           
       - name: Build web app
         script: |
