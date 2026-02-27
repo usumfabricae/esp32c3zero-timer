@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import './App.css'
 import { useBLEUnified } from './hooks/useBLEUnified.js'
 import { Capacitor } from '@capacitor/core'
+import { KeepAwake } from '@capacitor-community/keep-awake'
 import Header from './components/Header.jsx'
 import Sidebar from './components/Sidebar.jsx'
 import Dashboard from './components/Dashboard.jsx'
@@ -40,6 +41,27 @@ function App() {
     if (!isNative && !navigator.bluetooth) {
       setIsSupported(false);
       console.error('Web Bluetooth API is not supported in this browser');
+    }
+    
+    // Keep screen awake on native platforms
+    if (isNative) {
+      const keepScreenAwake = async () => {
+        try {
+          await KeepAwake.keepAwake();
+          console.log('[App] Screen will stay awake');
+        } catch (err) {
+          console.error('[App] Failed to keep screen awake:', err);
+        }
+      };
+      
+      keepScreenAwake();
+      
+      // Allow screen to sleep when component unmounts
+      return () => {
+        KeepAwake.allowSleep().catch(err => {
+          console.error('[App] Failed to allow sleep:', err);
+        });
+      };
     }
   }, []);
   
