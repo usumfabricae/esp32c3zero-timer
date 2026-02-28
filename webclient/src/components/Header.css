@@ -78,7 +78,7 @@
 
 .connection-status.connected .status-indicator {
   background-color: var(--success-color);
-  animation: pulse 2s ease-in-out infinite;
+  /* Removed infinite pulse animation for Android 15 performance */
 }
 
 .connection-status.disconnected .status-indicator {

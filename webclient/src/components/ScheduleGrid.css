@@ -115,7 +115,7 @@
 .schedule-cell.current-hour {
   border: 2px solid var(--primary-color);
   box-shadow: 0 0 8px rgba(33, 150, 243, 0.5);
-  animation: pulseGlow 2s ease-in-out infinite;
+  /* Removed infinite pulse animation for Android 15 performance */
 }
 
 @keyframes pulseGlow {
