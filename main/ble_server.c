@@ -35,7 +35,7 @@
 #define BATTERY_NUM_HANDLE 4
 
 // Standard characteristic UUIDs (added to custom service for compatibility)
-#define STD_TEMPERATURE_CHAR_UUID  0x2A6E  // Environmental Sensing Temperature
+#define STD_TEMPERATURE_CHAR_UUID  0xFF0C  // Current temperature (changed from 0x2A6E for Capacitor compatibility)
 #define STD_CURRENT_TIME_CHAR_UUID 0x2A2B  // Current Time
 #define STD_MANUFACTURER_NAME_UUID 0x2A29  // Manufacturer Name
 #define STD_MODEL_NUMBER_UUID      0x2A24  // Model Number
@@ -559,11 +559,11 @@ static void gatts_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_t gatts_
             ble_passkey_char_handle = param->add_char.attr_handle;
             ESP_LOGI(GATTS_TAG, "BLE Passkey characteristic added (0xFF0A)");
             
-            // Add standard temperature characteristic (Environmental Sensing)
+            // Add current temperature characteristic (custom UUID for Capacitor compatibility)
             // Note: NOTIFY property removed since notifications are not implemented
             esp_ble_gatts_add_char(service_handle, &(esp_bt_uuid_t){
                 .len = ESP_UUID_LEN_16,
-                .uuid.uuid16 = STD_TEMPERATURE_CHAR_UUID,  // 0x2A6E
+                .uuid.uuid16 = STD_TEMPERATURE_CHAR_UUID,  // 0xFF0C
             }, ESP_GATT_PERM_READ,
             ESP_GATT_CHAR_PROP_BIT_READ,
             &(esp_attr_value_t){
@@ -573,7 +573,7 @@ static void gatts_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_t gatts_
             }, NULL);
         } else if (param->add_char.char_uuid.uuid.uuid16 == STD_TEMPERATURE_CHAR_UUID) {
             std_temp_char_handle = param->add_char.attr_handle;
-            ESP_LOGI(GATTS_TAG, "Standard temperature characteristic added (0x2A6E)");
+            ESP_LOGI(GATTS_TAG, "Current temperature characteristic added (0xFF0C)");
             
             // Add standard current time characteristic
             // Note: NOTIFY property removed since notifications are not implemented
@@ -660,7 +660,7 @@ static void gatts_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_t gatts_
         } else if (param->read.handle == temp_char_handle) {
             ESP_LOGI(GATTS_TAG, "  -> Reading TEMP_THRESHOLDS (0xFF06)");
         } else if (param->read.handle == std_temp_char_handle) {
-            ESP_LOGI(GATTS_TAG, "  -> Reading STD_TEMPERATURE (0x2A6E)");
+            ESP_LOGI(GATTS_TAG, "  -> Reading CURRENT_TEMPERATURE (0xFF0C)");
         } else if (param->read.handle == std_time_char_handle) {
             ESP_LOGI(GATTS_TAG, "  -> Reading STD_CURRENT_TIME (0x2A2B)");
         } else if (param->read.handle == battery_level_char_handle) {
