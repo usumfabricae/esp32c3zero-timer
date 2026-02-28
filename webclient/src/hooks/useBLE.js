@@ -10,6 +10,7 @@ const CHAR_RELAY_STATE = 0xFF02;
 const CHAR_SCHEDULE = 0xFF05;
 const CHAR_TEMP_THRESHOLDS = 0xFF06;
 const CHAR_TEMP_CALIBRATION = 0xFF07;
+const CHAR_BATT_CALIBRATION = 0xFF0B;
 const CHAR_WIFI_SSID = 0xFF08;
 const CHAR_WIFI_PASSWORD = 0xFF09;
 const CHAR_BLE_PASSKEY = 0xFF0A;
@@ -542,6 +543,23 @@ export const useBLE = () => {
     }
   }, [isConnected, characteristics]);
 
+  const writeBatteryCalibration = useCallback(async (voltageMillivolts) => {
+    if (!isConnected || !characteristics[CHAR_BATT_CALIBRATION]) {
+      throw new Error('Not connected or characteristic not available');
+    }
+
+    try {
+      console.log('[BLE] Writing battery calibration:', voltageMillivolts, 'mV');
+      const data = DataFormatter.encodeBatteryCalibration(voltageMillivolts);
+      await characteristics[CHAR_BATT_CALIBRATION].writeValue(data);
+      console.log('[BLE] Battery calibration written successfully');
+      return true;
+    } catch (err) {
+      console.error('[BLE] Failed to write battery calibration:', err);
+      throw err;
+    }
+  }, [isConnected, characteristics]);
+
   // WiFi and BLE configuration operations
   const readWifiSsid = useCallback(async () => {
     if (!isConnected || !characteristics[CHAR_WIFI_SSID]) {
@@ -783,6 +801,7 @@ export const useBLE = () => {
     writeSchedule,
     writeTemperatureThresholds,
     writeTemperatureCalibration,
+    writeBatteryCalibration,
     writeWifiSsid,
     writeWifiPassword,
     writeBlePasskey,

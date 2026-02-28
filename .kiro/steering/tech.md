@@ -17,7 +17,7 @@ inclusion: always
 - ESP Bluetooth (BLE only, Bluedroid stack)
 - NVS Flash (non-volatile storage)
 - ESP ADC (temperature sensor)
-- ESP Sleep (deep sleep management)
+- ESP Sleep (deep sleep management with precise timing)
 - LWIP SNTP (NTP time sync)
 
 ### Language & Conventions
@@ -34,6 +34,14 @@ inclusion: always
 - sdkconfig system for build-time ESP-IDF configuration
 - Custom partition table (partitions.csv)
 - BLE 4.2 features enabled for ESP32-C3 Zero compatibility
+
+### Power Management
+- **Synchronized timing:** Device wakes at XX:XX:59, sleeps at XX:XX:05
+- **Active period:** 6 seconds (10% duty cycle)
+- **Deep sleep:** 54 seconds (90% duty cycle)
+- Dynamic sleep calculation based on actual wake time
+- Immediate sleep entry if device wakes late
+- Light sleep with BLE active during advertising period
 
 ## Web Client & Android App
 
@@ -57,8 +65,9 @@ inclusion: always
 - CSS modules for scoped styling
 - Web Bluetooth API for browser-based BLE communication
 - Capacitor Bluetooth LE plugin for Android BLE communication
-- Automatic device reconnection with getDevices() API (web only)
-- Smart fallback to device picker when needed
+- **Smart scanning:** Starts at XX:XX:57 (3 seconds before device wake)
+- **Debounced notifications:** BLE updates batched to max 1/second
+- **Android 15 optimizations:** No infinite animations, safe area insets
 
 ### Development Requirements
 - Node.js v14+
@@ -157,7 +166,10 @@ idf.py menuconfig
 - Custom partition table required for WiFi + BT libraries
 - All user configuration in main/config.h (WiFi, device name, timings, etc.)
 - Temperature calibration stored in NVS
-- Deep sleep duration and all timings configurable in config.h
+- **Timing configuration:**
+  - `LIGHT_SLEEP_DURATION_SEC = 6` (fallback only)
+  - `DEEP_SLEEP_DURATION_SEC = 54` (calculated dynamically)
+  - `BLE_ADVERTISING_TIMEOUT_SEC = 6`
 
 ### Android Build Configuration
 - Android Gradle Plugin 8.13.0 (requires Java 21)
@@ -166,3 +178,19 @@ idf.py menuconfig
 - Capacitor 8.1.0
 - Vite base path: `/` for Android, `/esp32c3zero-timer/` for web (conditional)
 - Codemagic CI/CD: Automated builds on push to main branch
+
+## Performance Optimizations
+
+### ESP32 Firmware
+- Precise timing: Wake at XX:XX:59, sleep at XX:XX:05
+- Dynamic sleep calculation compensates for late wakes
+- Immediate sleep entry if past target time
+- 60% reduction in active time (6s vs 10s per minute)
+
+### Android App
+- Smart scanning: Starts at XX:XX:57 (synchronized with device)
+- Scan duration: 3-5 seconds (vs 70 seconds previously)
+- 93% reduction in scan time
+- Debounced BLE notifications (max 1/second)
+- No infinite CSS animations
+- Safe area insets for Android 15 system bars

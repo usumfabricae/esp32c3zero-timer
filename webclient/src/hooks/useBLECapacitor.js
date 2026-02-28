@@ -658,6 +658,7 @@ export const useBLECapacitor = () => {
     writeWifiPassword: async () => {},
     writeBlePasskey: async () => {},
     writeTemperatureCalibration: async () => {},
+    writeBatteryCalibration: async () => {},
     reconnectAttempts: 0
   };
 };

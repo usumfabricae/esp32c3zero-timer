@@ -30,6 +30,12 @@
 #define NVS_CAL_TEMP_PREFIX "cal_temp_"
 #define NVS_CAL_MV_PREFIX "cal_mv_"
 
+// NVS keys for battery calibration
+#define NVS_BATT_CAL_NAMESPACE "batt_cal"
+#define NVS_BATT_CAL_COUNT_KEY "batt_count"
+#define NVS_BATT_CAL_PCT_PREFIX "batt_pct_"
+#define NVS_BATT_CAL_MV_PREFIX "batt_mv_"
+
 // NVS key for relay state
 #define NVS_NAMESPACE "gpio_state"
 #define NVS_RELAY_KEY "relay_state"
@@ -54,6 +60,38 @@ static uint8_t cal_point_count = 0;
 static float cal_slope = 0.0f;      // mV per °C
 static float cal_intercept = 0.0f;  // mV at 0°C
 static bool cal_valid = false;
+
+// Battery calibration storage (multiple points for linear regression)
+typedef struct {
+    uint16_t actual_voltage_mv;  // Actual measured voltage
+    uint16_t sensor_voltage_mv;  // Sensor reading voltage
+} batt_cal_point_t;
+
+static batt_cal_point_t batt_cal_points[MAX_CALIBRATION_POINTS];
+static uint8_t batt_cal_point_count = 0;
+
+// Battery linear regression coefficients (sensor_voltage = slope * actual_voltage + intercept)
+static float batt_cal_slope = 1.0f;      // Default: 1:1 mapping
+static float batt_cal_intercept = 0.0f;  // Default: no offset
+static bool batt_cal_valid = false;
+
+// Battery voltage to percentage lookup table (LiPo discharge curve)
+static const struct {
+    uint16_t voltage_mv;
+    uint8_t percentage;
+} battery_lookup_table[] = {
+    {4200, 100},
+    {4100, 90},
+    {4030, 80},
+    {3960, 70},
+    {3900, 60},
+    {3830, 50},
+    {3790, 40},
+    {3730, 30},
+    {3690, 20},
+    {3600, 10},
+    {3300, 0}
+};
 
 // Manual override tracking
 static time_t manual_override_until = 0;  // Timestamp when manual override expires (0 = not active)
@@ -92,6 +130,43 @@ static void calculate_calibration_curve(void)
     ESP_LOGI(GPIO_TAG, "Calibration curve calculated: voltage = %.2f * temp + %.2f (from %d points)",
              cal_slope, cal_intercept, cal_point_count);
 }
+// Calculate battery calibration curve from calibration points
+static void calculate_battery_calibration_curve(void)
+{
+    if (batt_cal_point_count < 2) {
+        // Not enough points, use defaults (1:1 mapping, no offset)
+        batt_cal_slope = 1.0f;
+        batt_cal_intercept = 0.0f;
+        batt_cal_valid = false;
+        ESP_LOGW(GPIO_TAG, "Using default battery calibration (1:1 mapping)");
+        return;
+    }
+
+    // Linear regression: sensor_voltage = slope * actual_voltage + intercept
+    // Using least squares method
+    float sum_actual = 0, sum_sensor = 0, sum_actual_sensor = 0, sum_actual_sq = 0;
+
+    for (int i = 0; i < batt_cal_point_count; i++) {
+        float actual = (float)batt_cal_points[i].actual_voltage_mv;
+        float sensor = (float)batt_cal_points[i].sensor_voltage_mv;
+
+        sum_actual += actual;
+        sum_sensor += sensor;
+        sum_actual_sensor += actual * sensor;
+        sum_actual_sq += actual * actual;
+    }
+
+    float n = (float)batt_cal_point_count;
+    batt_cal_slope = (n * sum_actual_sensor - sum_actual * sum_sensor) / (n * sum_actual_sq - sum_actual * sum_actual);
+    batt_cal_intercept = (sum_sensor - batt_cal_slope * sum_actual) / n;
+    batt_cal_valid = true;
+
+    ESP_LOGI(GPIO_TAG, "Battery calibration curve calculated: sensor = %.4f * actual + %.2f (from %d points)",
+             batt_cal_slope, batt_cal_intercept, batt_cal_point_count);
+}
+
+
+
 
 // Load temperature calibration from NVS
 static void load_temp_calibration(void)
@@ -138,6 +213,53 @@ static void load_temp_calibration(void)
     ESP_LOGI(GPIO_TAG, "Loaded %d calibration points from NVS", cal_point_count);
     calculate_calibration_curve();
 }
+// Load battery calibration from NVS
+static void load_battery_calibration(void)
+{
+    nvs_handle_t nvs_handle;
+    esp_err_t ret = nvs_open(NVS_BATT_CAL_NAMESPACE, NVS_READONLY, &nvs_handle);
+    if (ret != ESP_OK) {
+        ESP_LOGI(GPIO_TAG, "No stored battery calibration, using defaults");
+        batt_cal_point_count = 0;
+        calculate_battery_calibration_curve();
+        return;
+    }
+
+    // Load calibration point count
+    uint8_t count = 0;
+    ret = nvs_get_u8(nvs_handle, NVS_BATT_CAL_COUNT_KEY, &count);
+    if (ret != ESP_OK || count == 0 || count > MAX_CALIBRATION_POINTS) {
+        ESP_LOGI(GPIO_TAG, "Invalid battery calibration count, using defaults");
+        nvs_close(nvs_handle);
+        batt_cal_point_count = 0;
+        calculate_battery_calibration_curve();
+        return;
+    }
+
+    // Load calibration points
+    batt_cal_point_count = 0;
+    for (int i = 0; i < count; i++) {
+        char actual_key[20], sensor_key[20];
+        snprintf(actual_key, sizeof(actual_key), "batt_actual_%d", i);
+        snprintf(sensor_key, sizeof(sensor_key), "batt_sensor_%d", i);
+
+        uint16_t actual_mv, sensor_mv;
+        if (nvs_get_u16(nvs_handle, actual_key, &actual_mv) == ESP_OK &&
+            nvs_get_u16(nvs_handle, sensor_key, &sensor_mv) == ESP_OK) {
+            batt_cal_points[batt_cal_point_count].actual_voltage_mv = actual_mv;
+            batt_cal_points[batt_cal_point_count].sensor_voltage_mv = sensor_mv;
+            batt_cal_point_count++;
+        }
+    }
+
+    nvs_close(nvs_handle);
+
+    ESP_LOGI(GPIO_TAG, "Loaded %d battery calibration points from NVS", batt_cal_point_count);
+    calculate_battery_calibration_curve();
+}
+
+
+
 
 // Save temperature calibration to NVS
 static esp_err_t save_temp_calibration(void)
@@ -169,6 +291,38 @@ static esp_err_t save_temp_calibration(void)
     
     return ret;
 }
+// Save battery calibration to NVS
+static esp_err_t save_battery_calibration(void)
+{
+    nvs_handle_t nvs_handle;
+    esp_err_t ret = nvs_open(NVS_BATT_CAL_NAMESPACE, NVS_READWRITE, &nvs_handle);
+    if (ret != ESP_OK) {
+        ESP_LOGE(GPIO_TAG, "Failed to open NVS for battery calibration");
+        return ret;
+    }
+
+    // Save calibration point count
+    nvs_set_u8(nvs_handle, NVS_BATT_CAL_COUNT_KEY, batt_cal_point_count);
+
+    // Save calibration points
+    for (int i = 0; i < batt_cal_point_count; i++) {
+        char actual_key[20], sensor_key[20];
+        snprintf(actual_key, sizeof(actual_key), "batt_actual_%d", i);
+        snprintf(sensor_key, sizeof(sensor_key), "batt_sensor_%d", i);
+
+        nvs_set_u16(nvs_handle, actual_key, batt_cal_points[i].actual_voltage_mv);
+        nvs_set_u16(nvs_handle, sensor_key, batt_cal_points[i].sensor_voltage_mv);
+    }
+
+    ret = nvs_commit(nvs_handle);
+    nvs_close(nvs_handle);
+
+    ESP_LOGI(GPIO_TAG, "Saved %d battery calibration points to NVS", batt_cal_point_count);
+
+    return ret;
+}
+
+
 
 esp_err_t gpio_manager_init(void)
 {
@@ -324,6 +478,9 @@ esp_err_t gpio_manager_init(void)
 
     // Load temperature calibration from NVS
     load_temp_calibration();
+    
+    // Load battery calibration from NVS
+    load_battery_calibration();
 
     return ESP_OK;
 }
@@ -586,6 +743,84 @@ esp_err_t gpio_reset_temperature_calibration(void)
     ESP_LOGI(GPIO_TAG, "Temperature calibration reset complete");
     return ESP_OK;
 }
+esp_err_t gpio_calibrate_battery_voltage(uint16_t actual_voltage_mv)
+{
+    // Validate voltage range
+    if (actual_voltage_mv < 2500 || actual_voltage_mv > 5000) {
+        ESP_LOGE(GPIO_TAG, "Invalid battery voltage: %dmV (must be 2500-5000mV)", actual_voltage_mv);
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    // Read current sensor voltage
+    uint16_t sensor_voltage_mv = gpio_read_battery_voltage();
+
+    if (sensor_voltage_mv == 0) {
+        ESP_LOGE(GPIO_TAG, "Failed to read battery voltage for calibration");
+        return ESP_FAIL;
+    }
+
+    // Check if we already have a point very close to this voltage (within 100mV)
+    for (int i = 0; i < batt_cal_point_count; i++) {
+        if (abs(batt_cal_points[i].actual_voltage_mv - actual_voltage_mv) <= 100) {
+            // Update existing point
+            ESP_LOGI(GPIO_TAG, "Updating existing battery calibration point: %dmV@%dmV -> %dmV@%dmV",
+                     batt_cal_points[i].actual_voltage_mv, batt_cal_points[i].sensor_voltage_mv,
+                     actual_voltage_mv, sensor_voltage_mv);
+            batt_cal_points[i].actual_voltage_mv = actual_voltage_mv;
+            batt_cal_points[i].sensor_voltage_mv = sensor_voltage_mv;
+            calculate_battery_calibration_curve();
+            return save_battery_calibration();
+        }
+    }
+
+    // Add new calibration point
+    if (batt_cal_point_count < MAX_CALIBRATION_POINTS) {
+        batt_cal_points[batt_cal_point_count].actual_voltage_mv = actual_voltage_mv;
+        batt_cal_points[batt_cal_point_count].sensor_voltage_mv = sensor_voltage_mv;
+        batt_cal_point_count++;
+        ESP_LOGI(GPIO_TAG, "Added battery calibration point %d: actual=%dmV, sensor=%dmV",
+                 batt_cal_point_count, actual_voltage_mv, sensor_voltage_mv);
+    } else {
+        // Replace oldest point (FIFO)
+        ESP_LOGI(GPIO_TAG, "Battery calibration buffer full, replacing oldest point");
+        for (int i = 0; i < MAX_CALIBRATION_POINTS - 1; i++) {
+            batt_cal_points[i] = batt_cal_points[i + 1];
+        }
+        batt_cal_points[MAX_CALIBRATION_POINTS - 1].actual_voltage_mv = actual_voltage_mv;
+        batt_cal_points[MAX_CALIBRATION_POINTS - 1].sensor_voltage_mv = sensor_voltage_mv;
+        ESP_LOGI(GPIO_TAG, "Added battery calibration point: actual=%dmV, sensor=%dmV",
+                 actual_voltage_mv, sensor_voltage_mv);
+    }
+
+    calculate_battery_calibration_curve();
+    return save_battery_calibration();
+}
+
+
+esp_err_t gpio_reset_battery_calibration(void)
+{
+    ESP_LOGI(GPIO_TAG, "Resetting battery calibration to factory defaults");
+
+    // Clear all calibration points
+    batt_cal_point_count = 0;
+
+    // Recalculate using defaults
+    calculate_battery_calibration_curve();
+
+    // Clear NVS
+    nvs_handle_t nvs_handle;
+    esp_err_t ret = nvs_open(NVS_BATT_CAL_NAMESPACE, NVS_READWRITE, &nvs_handle);
+    if (ret == ESP_OK) {
+        nvs_erase_all(nvs_handle);
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+    }
+
+    ESP_LOGI(GPIO_TAG, "Battery calibration reset complete");
+    return ESP_OK;
+}
+
+
 
 uint16_t gpio_read_battery_voltage(void)
 {
@@ -616,16 +851,57 @@ uint16_t gpio_read_battery_voltage(void)
 
 uint8_t gpio_get_battery_percentage(void)
 {
-    uint16_t voltage_mv = gpio_read_battery_voltage();
-    
-    // Battery voltage to percentage conversion (from config.h)
-    if (voltage_mv >= BATTERY_MAX_MV) {
-        return 100;
-    } else if (voltage_mv <= BATTERY_MIN_MV) {
+    uint16_t sensor_voltage_mv = gpio_read_battery_voltage();
+
+    if (sensor_voltage_mv == 0) {
         return 0;
     }
+
+    // Step 1: Apply calibration to get actual voltage (if calibration is valid)
+    uint16_t actual_voltage_mv = sensor_voltage_mv;
     
-    // Linear interpolation
-    uint32_t percentage = ((uint32_t)(voltage_mv - BATTERY_MIN_MV) * 100) / (BATTERY_MAX_MV - BATTERY_MIN_MV);
-    return (uint8_t)percentage;
+    if (batt_cal_valid && batt_cal_slope != 0.0f) {
+        // Inverse of calibration: sensor_voltage = slope * actual_voltage + intercept
+        // actual_voltage = (sensor_voltage - intercept) / slope
+        float actual_voltage_float = (sensor_voltage_mv - batt_cal_intercept) / batt_cal_slope;
+        actual_voltage_mv = (uint16_t)(actual_voltage_float + 0.5f);  // Round to nearest
+        
+        ESP_LOGI(GPIO_TAG, "Battery calibration applied: sensor=%dmV -> actual=%dmV", 
+                 sensor_voltage_mv, actual_voltage_mv);
+    }
+
+    // Step 2: Use LiPo discharge curve lookup table to convert voltage to percentage
+    const int table_size = sizeof(battery_lookup_table) / sizeof(battery_lookup_table[0]);
+    
+    // Check bounds
+    if (actual_voltage_mv >= battery_lookup_table[0].voltage_mv) {
+        return battery_lookup_table[0].percentage;  // 100%
+    }
+    if (actual_voltage_mv <= battery_lookup_table[table_size - 1].voltage_mv) {
+        return battery_lookup_table[table_size - 1].percentage;  // 0%
+    }
+    
+    // Linear interpolation between two closest points
+    for (int i = 0; i < table_size - 1; i++) {
+        if (actual_voltage_mv <= battery_lookup_table[i].voltage_mv && 
+            actual_voltage_mv >= battery_lookup_table[i + 1].voltage_mv) {
+            
+            uint16_t v_high = battery_lookup_table[i].voltage_mv;
+            uint16_t v_low = battery_lookup_table[i + 1].voltage_mv;
+            uint8_t p_high = battery_lookup_table[i].percentage;
+            uint8_t p_low = battery_lookup_table[i + 1].percentage;
+            
+            // Linear interpolation: p = p_high - (v_high - v) * (p_high - p_low) / (v_high - v_low)
+            uint32_t percentage = p_high - ((uint32_t)(v_high - actual_voltage_mv) * (p_high - p_low)) / (v_high - v_low);
+            
+            ESP_LOGI(GPIO_TAG, "Battery percentage: %dmV -> %d%% (interpolated between %dmV/%d%% and %dmV/%d%%)",
+                     actual_voltage_mv, (uint8_t)percentage, v_high, p_high, v_low, p_low);
+            
+            return (uint8_t)percentage;
+        }
+    }
+    
+    // Should never reach here, but return 0 as fallback
+    return 0;
 }
+

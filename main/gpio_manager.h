@@ -26,6 +26,10 @@ time_t gpio_get_manual_override_endtime(void);  // Get override end time (0 if n
 esp_err_t gpio_calibrate_temperature(int16_t actual_temp_celsius);  // Add calibration point
 esp_err_t gpio_reset_temperature_calibration(void);                 // Reset to factory defaults
 
+// Battery calibration
+esp_err_t gpio_calibrate_battery_voltage(uint16_t actual_voltage_mv);  // Add calibration point
+esp_err_t gpio_reset_battery_calibration(void);                        // Reset to factory defaults
+
 // Temperature reading (GPIO3)
 int16_t gpio_read_temperature(void);  // Returns temperature in degrees Celsius
 uint16_t gpio_read_adc_voltage(void);  // Returns raw voltage in mV (for debugging)

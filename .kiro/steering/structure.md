@@ -103,6 +103,8 @@ webclient/
 - Custom hooks for complex logic (useBLE, useBLECapacitor, useBLEUnified)
 - Utility functions for data formatting and conversion
 - Platform-aware BLE abstraction layer
+- Debounced BLE notifications (max 1/second) for performance
+- Smart scanning synchronized with device wake times
 
 ## Architecture Patterns
 
@@ -139,3 +141,5 @@ webclient/
 - `webclient/README.md` - Web client setup and usage
 - `webclient/TESTING_GUIDE.md` - Testing procedures
 - `webclient/MOBILE_TESTING.md` - Mobile device testing
+- `webclient/ANDROID_BUILD_SUMMARY.md` - Android build documentation
+- `webclient/CODEMAGIC_SETUP.md` - CI/CD setup guide

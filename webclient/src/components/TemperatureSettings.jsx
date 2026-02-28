@@ -9,8 +9,11 @@ function TemperatureSettings({ ble }) {
   const [high, setHigh] = useState('');
   const [low, setLow] = useState('');
   
-  // State for calibration input
+  // State for temperature calibration input
   const [calibration, setCalibration] = useState('');
+  
+  // State for battery calibration input (in millivolts)
+  const [batteryCalibration, setBatteryCalibration] = useState('');
   
   // State for notifications
   const [notification, setNotification] = useState(null);
@@ -154,6 +157,80 @@ function TemperatureSettings({ ble }) {
     }
   };
 
+  // Handler for calibrating battery
+  const handleCalibrateBattery = async () => {
+    const voltageValue = parseFloat(batteryCalibration);
+
+    if (isNaN(voltageValue)) {
+      setNotification({
+        type: 'error',
+        message: 'Please enter a valid battery voltage in millivolts'
+      });
+      return;
+    }
+
+    if (voltageValue < 2500 || voltageValue > 4500) {
+      setNotification({
+        type: 'error',
+        message: 'Battery voltage must be between 2500mV and 4500mV'
+      });
+      return;
+    }
+
+    // Show loading notification
+    setNotification({
+      type: 'loading',
+      message: 'Calibrating battery sensor...'
+    });
+
+    try {
+      await ble.writeBatteryCalibration(voltageValue);
+      
+      // Clear input after successful calibration
+      setBatteryCalibration('');
+      
+      // Show success notification
+      setNotification({
+        type: 'success',
+        message: 'Battery sensor calibrated successfully',
+        duration: 3000
+      });
+    } catch (error) {
+      // Show error notification
+      setNotification({
+        type: 'error',
+        message: `Failed to calibrate battery: ${error.message}`
+      });
+    }
+  };
+
+  // Handler for resetting battery calibration
+  const handleResetBatteryCalibration = async () => {
+    // Show loading notification
+    setNotification({
+      type: 'loading',
+      message: 'Resetting battery calibration...'
+    });
+
+    try {
+      // Write -1 to reset calibration (will be converted to 0xFFFF/65535)
+      await ble.writeBatteryCalibration(-1);
+      
+      // Show success notification
+      setNotification({
+        type: 'success',
+        message: 'Battery calibration reset successfully',
+        duration: 3000
+      });
+    } catch (error) {
+      // Show error notification
+      setNotification({
+        type: 'error',
+        message: `Failed to reset battery calibration: ${error.message}`
+      });
+    }
+  };
+
   return (
     <div className="temperature-settings">
       <h2 className="page-title">Temperature Settings</h2>
@@ -238,6 +315,50 @@ function TemperatureSettings({ ble }) {
             <button
               className="btn btn-secondary"
               onClick={handleResetCalibration}
+              disabled={!isConnected}
+            >
+              Reset Calibration
+            </button>
+          </div>
+        </div>
+
+        {/* Battery Calibration Section */}
+        <div className="settings-section">
+          <h3 className="section-title">Battery Calibration</h3>
+          <p className="section-description">
+            Calibrate the battery sensor by entering the actual battery voltage in millivolts.
+            Current battery: {deviceData.batteryVoltage ? `${deviceData.batteryVoltage}mV (${deviceData.batteryLevel}%)` : 'N/A'}
+          </p>
+
+          <div className="form-group">
+            <label htmlFor="calibration-battery">
+              Actual Battery Voltage (mV)
+            </label>
+            <input
+              id="calibration-battery"
+              type="number"
+              step="1"
+              value={batteryCalibration}
+              onChange={(e) => setBatteryCalibration(e.target.value)}
+              disabled={!isConnected}
+              placeholder="e.g., 4200"
+            />
+            <small className="form-hint">
+              Typical range: 3000mV (empty) to 4200mV (full)
+            </small>
+          </div>
+
+          <div className="button-group">
+            <button
+              className="btn btn-primary"
+              onClick={handleCalibrateBattery}
+              disabled={!isConnected || !batteryCalibration}
+            >
+              Calibrate
+            </button>
+            <button
+              className="btn btn-secondary"
+              onClick={handleResetBatteryCalibration}
               disabled={!isConnected}
             >
               Reset Calibration

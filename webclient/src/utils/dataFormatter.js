@@ -142,6 +142,28 @@ class DataFormatter {
     return new Uint8Array(buffer)
   }
 
+  /**
+   * Encode battery calibration value - sends actual voltage in millivolts
+   * Device will store current sensor reading vs this actual voltage
+   * @param {number} actualVoltageMillivolts - Actual measured battery voltage in millivolts (or -1 for reset)
+   * @returns {Uint8Array} 2-byte array (voltage in mV as unsigned 16-bit little-endian, or 0xFFFF for reset)
+   */
+  static encodeBatteryCalibration(actualVoltageMillivolts) {
+    const buffer = new ArrayBuffer(2)
+    const view = new DataView(buffer)
+    
+    // Special value -1 means reset calibration
+    if (actualVoltageMillivolts === -1) {
+      view.setUint16(0, 0xFFFF, true) // 0xFFFF = 65535 = reset
+      return new Uint8Array(buffer)
+    }
+    
+    // Send actual voltage in millivolts as unsigned 16-bit
+    const voltageValue = Math.round(actualVoltageMillivolts)
+    view.setUint16(0, voltageValue, true) // true = little-endian
+    return new Uint8Array(buffer)
+  }
+
   // Validators
   /**
    * Validate schedule string format

@@ -23,10 +23,11 @@
 #define GATTS_SCHEDULE_CHAR_UUID 0xFF05
 #define GATTS_TEMP_CHAR_UUID 0xFF06
 #define GATTS_TEMP_CAL_CHAR_UUID 0xFF07  // Temperature calibration
+#define GATTS_BATT_CAL_CHAR_UUID 0xFF0B  // Battery calibration
 #define GATTS_WIFI_SSID_CHAR_UUID 0xFF08  // WiFi SSID (read/write)
 #define GATTS_WIFI_PASS_CHAR_UUID 0xFF09  // WiFi Password (write only)
 #define GATTS_BLE_PASSKEY_CHAR_UUID 0xFF0A  // BLE Passkey (write only)
-#define GATTS_NUM_HANDLE     35  // Increased for additional characteristics
+#define GATTS_NUM_HANDLE     37  // Increased for battery calibration characteristic
 
 // Battery Service (Standard Bluetooth SIG)
 #define BATTERY_SERVICE_UUID 0x180F
@@ -67,6 +68,7 @@ static uint16_t passkey_char_handle = 0;
 static uint16_t schedule_char_handle = 0;
 static uint16_t temp_char_handle = 0;
 static uint16_t temp_cal_char_handle = 0;
+static uint16_t batt_cal_char_handle = 0;
 static uint16_t wifi_ssid_char_handle = 0;
 static uint16_t wifi_pass_char_handle = 0;
 static uint16_t ble_passkey_char_handle = 0;
@@ -495,6 +497,21 @@ static void gatts_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_t gatts_
         } else if (param->add_char.char_uuid.uuid.uuid16 == GATTS_TEMP_CAL_CHAR_UUID) {
             temp_cal_char_handle = param->add_char.attr_handle;
             ESP_LOGI(GATTS_TAG, "Temperature calibration characteristic added");
+            
+            // Add battery calibration characteristic (write: 2 bytes voltage in mV)
+            esp_ble_gatts_add_char(service_handle, &(esp_bt_uuid_t){
+                .len = ESP_UUID_LEN_16,
+                .uuid.uuid16 = GATTS_BATT_CAL_CHAR_UUID,
+            }, ESP_GATT_PERM_WRITE,
+            ESP_GATT_CHAR_PROP_BIT_WRITE,
+            &(esp_attr_value_t){
+                .attr_max_len = 2,  // 2 bytes for voltage in mV
+                .attr_len = 0,
+                .attr_value = NULL,
+            }, NULL);
+        } else if (param->add_char.char_uuid.uuid.uuid16 == GATTS_BATT_CAL_CHAR_UUID) {
+            batt_cal_char_handle = param->add_char.attr_handle;
+            ESP_LOGI(GATTS_TAG, "Battery calibration characteristic added (0xFF0B)");
             
             // Add WiFi SSID characteristic (read/write)
             esp_ble_gatts_add_char(service_handle, &(esp_bt_uuid_t){
@@ -957,6 +974,52 @@ static void gatts_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_t gatts_
                 }
             } else {
                 ESP_LOGW(GATTS_TAG, "Invalid calibration data length: %d (expected 2)", param->write.len);
+                if (param->write.need_rsp) {
+                    esp_ble_gatts_send_response(gatts_if, param->write.conn_id, param->write.trans_id, 
+                                               ESP_GATT_INVALID_ATTR_LEN, NULL);
+                }
+            }
+        } else if (param->write.handle == batt_cal_char_handle) {
+            // Battery calibration write: 2 bytes (unsigned 16-bit voltage in mV)
+            if (param->write.len == 2) {
+                uint16_t actual_voltage_mv = (uint16_t)(param->write.value[0] | (param->write.value[1] << 8));
+                
+                // Special value 65535 (0xFFFF) to reset calibration
+                if (actual_voltage_mv == 65535) {
+                    if (gpio_reset_battery_calibration() == ESP_OK) {
+                        ESP_LOGI(GATTS_TAG, "Battery calibration reset to factory defaults");
+                        if (param->write.need_rsp) {
+                            esp_ble_gatts_send_response(gatts_if, param->write.conn_id, param->write.trans_id, ESP_GATT_OK, NULL);
+                        }
+                    } else {
+                        ESP_LOGW(GATTS_TAG, "Battery calibration reset failed");
+                        if (param->write.need_rsp) {
+                            esp_ble_gatts_send_response(gatts_if, param->write.conn_id, param->write.trans_id, 
+                                                       ESP_GATT_ERROR, NULL);
+                        }
+                    }
+                } else if (actual_voltage_mv >= 2500 && actual_voltage_mv <= 5000) {
+                    if (gpio_calibrate_battery_voltage(actual_voltage_mv) == ESP_OK) {
+                        ESP_LOGI(GATTS_TAG, "Battery calibration point added: %dmV", actual_voltage_mv);
+                        if (param->write.need_rsp) {
+                            esp_ble_gatts_send_response(gatts_if, param->write.conn_id, param->write.trans_id, ESP_GATT_OK, NULL);
+                        }
+                    } else {
+                        ESP_LOGW(GATTS_TAG, "Battery calibration failed");
+                        if (param->write.need_rsp) {
+                            esp_ble_gatts_send_response(gatts_if, param->write.conn_id, param->write.trans_id, 
+                                                       ESP_GATT_ERROR, NULL);
+                        }
+                    }
+                } else {
+                    ESP_LOGW(GATTS_TAG, "Invalid battery voltage: %dmV (must be 2500-5000mV or 65535 for reset)", actual_voltage_mv);
+                    if (param->write.need_rsp) {
+                        esp_ble_gatts_send_response(gatts_if, param->write.conn_id, param->write.trans_id, 
+                                                   ESP_GATT_INVALID_PDU, NULL);
+                    }
+                }
+            } else {
+                ESP_LOGW(GATTS_TAG, "Invalid battery calibration data length: %d (expected 2)", param->write.len);
                 if (param->write.need_rsp) {
                     esp_ble_gatts_send_response(gatts_if, param->write.conn_id, param->write.trans_id, 
                                                ESP_GATT_INVALID_ATTR_LEN, NULL);
