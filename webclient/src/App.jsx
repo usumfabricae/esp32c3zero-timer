@@ -162,12 +162,15 @@ function App() {
   const handleConnect = async () => {
     setGlobalNotification({
       type: 'loading',
-      message: 'Scanning for device... (up to 70 seconds - device wakes every 60s)'
+      message: 'Scanning for device... (device wakes every 60s at XX:XX:59)'
     });
 
     try {
       // Call ble.connect
       await ble.connect();
+      
+      // Clear scanning notification immediately on successful connection
+      setGlobalNotification(null);
       
       // Set flag to trigger initial data read via useEffect
       setNeedsInitialRead(true);
@@ -204,6 +207,8 @@ function App() {
 
     try {
       await ble.disconnect();
+      
+      // Clear any lingering notifications
       setGlobalNotification({
         type: 'success',
         message: 'Disconnected successfully',
