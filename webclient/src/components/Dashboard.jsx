@@ -98,13 +98,19 @@ function Dashboard({ ble }) {
     });
 
     try {
-      // Read all data from device
+      // Read all data from device - handle each independently to avoid one failure breaking all
       await Promise.all([
-        ble.readTemperature(),
+        ble.readTemperature().catch(err => {
+          console.warn('[Dashboard] Temperature read failed:', err);
+          return null;
+        }),
         ble.readRelayState(),
         ble.readSchedule(),
         ble.readTemperatureThresholds(),
-        ble.readBatteryLevel().catch(err => console.warn('Battery level not available:', err))
+        ble.readBatteryLevel().catch(err => {
+          console.warn('[Dashboard] Battery level not available:', err);
+          return null;
+        })
       ]);
 
       setNotification({

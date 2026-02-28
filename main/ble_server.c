@@ -417,11 +417,12 @@ static void gatts_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_t gatts_
             ESP_LOGI(GATTS_TAG, "Battery Service started");
             
             // Add Battery Level characteristic
+            // Note: NOTIFY property removed since notifications are not implemented
             esp_ble_gatts_add_char(battery_service_handle, &(esp_bt_uuid_t){
                 .len = ESP_UUID_LEN_16,
                 .uuid.uuid16 = BATTERY_LEVEL_CHAR_UUID,
             }, ESP_GATT_PERM_READ,
-            ESP_GATT_CHAR_PROP_BIT_READ | ESP_GATT_CHAR_PROP_BIT_NOTIFY,
+            ESP_GATT_CHAR_PROP_BIT_READ,
             &(esp_attr_value_t){
                 .attr_max_len = 1,  // Battery level is 1 byte (0-100%)
                 .attr_len = 0,
@@ -559,11 +560,12 @@ static void gatts_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_t gatts_
             ESP_LOGI(GATTS_TAG, "BLE Passkey characteristic added (0xFF0A)");
             
             // Add standard temperature characteristic (Environmental Sensing)
+            // Note: NOTIFY property removed since notifications are not implemented
             esp_ble_gatts_add_char(service_handle, &(esp_bt_uuid_t){
                 .len = ESP_UUID_LEN_16,
                 .uuid.uuid16 = STD_TEMPERATURE_CHAR_UUID,  // 0x2A6E
             }, ESP_GATT_PERM_READ,
-            ESP_GATT_CHAR_PROP_BIT_READ | ESP_GATT_CHAR_PROP_BIT_NOTIFY,
+            ESP_GATT_CHAR_PROP_BIT_READ,
             &(esp_attr_value_t){
                 .attr_max_len = 2,  // 2 bytes for temperature
                 .attr_len = 0,
@@ -574,11 +576,12 @@ static void gatts_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_t gatts_
             ESP_LOGI(GATTS_TAG, "Standard temperature characteristic added (0x2A6E)");
             
             // Add standard current time characteristic
+            // Note: NOTIFY property removed since notifications are not implemented
             esp_ble_gatts_add_char(service_handle, &(esp_bt_uuid_t){
                 .len = ESP_UUID_LEN_16,
                 .uuid.uuid16 = STD_CURRENT_TIME_CHAR_UUID,  // 0x2A2B
             }, ESP_GATT_PERM_READ,
-            ESP_GATT_CHAR_PROP_BIT_READ | ESP_GATT_CHAR_PROP_BIT_NOTIFY,
+            ESP_GATT_CHAR_PROP_BIT_READ,
             &(esp_attr_value_t){
                 .attr_max_len = 10,  // 10 bytes for current time
                 .attr_len = 0,
