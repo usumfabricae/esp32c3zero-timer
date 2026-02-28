@@ -46,6 +46,7 @@ export const useBLECapacitor = () => {
   const scanTimeoutRef = useRef(null);
   const isScanningRef = useRef(false);
   const deviceFoundRef = useRef(false);
+  const scheduledScanTimerRef = useRef(null);
   
   // Refs to hold latest notification data without triggering re-renders
   const notificationDataRef = useRef({
@@ -54,6 +55,28 @@ export const useBLECapacitor = () => {
     batteryLevel: null
   });
   const updateTimerRef = useRef(null);
+
+  // Calculate milliseconds until 3 seconds before next minute
+  const getMillisecondsUntilNextScan = () => {
+    const now = new Date();
+    const seconds = now.getSeconds();
+    const milliseconds = now.getMilliseconds();
+    
+    // We want to start scanning at XX:XX:57
+    const targetSecond = 57;
+    let secondsUntilTarget;
+    
+    if (seconds < targetSecond) {
+      // Next scan is in this minute
+      secondsUntilTarget = targetSecond - seconds;
+    } else {
+      // Next scan is in next minute
+      secondsUntilTarget = (60 - seconds) + targetSecond;
+    }
+    
+    // Convert to milliseconds and subtract current milliseconds
+    return (secondsUntilTarget * 1000) - milliseconds;
+  };
 
   // Load saved device ID from localStorage
   useEffect(() => {
@@ -94,6 +117,11 @@ export const useBLECapacitor = () => {
           clearTimeout(updateTimerRef.current);
         }
         
+        // Clear scheduled scan timer
+        if (scheduledScanTimerRef.current) {
+          clearTimeout(scheduledScanTimerRef.current);
+        }
+        
         // Clear timeout
         if (scanTimeoutRef.current) {
           clearTimeout(scanTimeoutRef.current);
@@ -122,7 +150,7 @@ export const useBLECapacitor = () => {
     };
   }, [deviceId]);
 
-  // Background reconnect to saved device using requestLEScan
+  // Background reconnect to saved device using smart scanning
   const reconnectToSavedDevice = useCallback(async (deviceAddress) => {
     setIsConnecting(true);
     setError(null);
@@ -158,71 +186,93 @@ export const useBLECapacitor = () => {
       }
     };
 
-    try {
-      console.log('[Capacitor BLE] Scanning for saved device:', deviceAddress);
-      
-      // Start scanning for the specific device
-      // Don't filter by service in scan - ESP32 might not advertise service UUID
-      await BleClient.requestLEScan(
-        {
-          // No service filter - scan for all devices
-          allowDuplicates: false
-        },
-        async (result) => {
-          // Ignore if device already found or processed
-          if (deviceFoundRef.current) {
-            return;
-          }
+    const startScan = async () => {
+      try {
+        console.log('[Capacitor BLE] Starting scan for saved device:', deviceAddress);
+        
+        // Start scanning for the specific device
+        await BleClient.requestLEScan(
+          {
+            allowDuplicates: false
+          },
+          async (result) => {
+            // Ignore if device already found or processed
+            if (deviceFoundRef.current) {
+              return;
+            }
 
-          // Check if this is our saved device
-          if (result.device.deviceId === deviceAddress) {
-            deviceFoundRef.current = true;
-            console.log('[Capacitor BLE] Found saved device:', result.device.deviceId);
-            
-            // Stop scanning immediately
-            await cleanup();
-            
-            // Connect to the device
-            try {
-              await BleClient.connect(result.device.deviceId, (disconnectedDeviceId) => {
-                console.log('[Capacitor BLE] Device disconnected:', disconnectedDeviceId);
-                setIsConnected(false);
-                setDeviceId(null);
-              });
+            // Check if this is our saved device
+            if (result.device.deviceId === deviceAddress) {
+              deviceFoundRef.current = true;
+              console.log('[Capacitor BLE] Found saved device:', result.device.deviceId);
               
-              console.log('[Capacitor BLE] Reconnected to saved device');
-              setDeviceId(result.device.deviceId);
-              setIsConnected(true);
-              setIsConnecting(false);
-            } catch (err) {
-              console.error('[Capacitor BLE] Reconnection failed:', err);
-              setError(err.message || 'Reconnection failed');
-              setIsConnecting(false);
+              // Stop scanning immediately
+              await cleanup();
+              
+              // Connect to the device
+              try {
+                await BleClient.connect(result.device.deviceId, (disconnectedDeviceId) => {
+                  console.log('[Capacitor BLE] Device disconnected:', disconnectedDeviceId);
+                  setIsConnected(false);
+                  setDeviceId(null);
+                });
+                
+                console.log('[Capacitor BLE] Reconnected to saved device');
+                setDeviceId(result.device.deviceId);
+                setIsConnected(true);
+                setIsConnecting(false);
+              } catch (err) {
+                console.error('[Capacitor BLE] Reconnection failed:', err);
+                setError(err.message || 'Reconnection failed');
+                setIsConnecting(false);
+              }
             }
           }
-        }
-      );
+        );
 
-      isScanningRef.current = true;
+        isScanningRef.current = true;
 
-      // Stop scanning after 70 seconds if device not found
-      // ESP32 wakes every 60 seconds, so 70s ensures we catch at least one wake cycle
-      scanTimeoutRef.current = setTimeout(async () => {
-        if (!deviceFoundRef.current) {
-          console.log('[Capacitor BLE] Scan timeout - device not found after 70s');
-          await cleanup();
-          setIsConnecting(false);
-          setError('Device not found after 70 seconds');
-        }
-      }, 70000);
+        // Stop scanning after 10 seconds if device not found
+        // Device should appear within 3-4 seconds if we timed it right
+        scanTimeoutRef.current = setTimeout(async () => {
+          if (!deviceFoundRef.current) {
+            console.log('[Capacitor BLE] Scan timeout - device not found');
+            await cleanup();
+            
+            // Schedule next scan attempt at next minute mark
+            const msUntilNextScan = getMillisecondsUntilNextScan();
+            console.log(`[Capacitor BLE] Scheduling next scan in ${(msUntilNextScan / 1000).toFixed(1)}s`);
+            
+            scheduledScanTimerRef.current = setTimeout(() => {
+              if (!deviceFoundRef.current && !isConnected) {
+                startScan();
+              }
+            }, msUntilNextScan);
+          }
+        }, 10000);
+
+      } catch (err) {
+        console.error('[Capacitor BLE] Scan failed:', err);
+        await cleanup();
+        setError(err.message || 'Scan failed');
+        setIsConnecting(false);
+      }
+    };
+
+    try {
+      // Calculate time until 3 seconds before next minute
+      const msUntilScan = getMillisecondsUntilNextScan();
+      console.log(`[Capacitor BLE] Scheduling scan in ${(msUntilScan / 1000).toFixed(1)}s (at XX:XX:57)`);
+      
+      // Schedule the scan to start at the optimal time
+      scheduledScanTimerRef.current = setTimeout(startScan, msUntilScan);
 
     } catch (err) {
-      console.error('[Capacitor BLE] Scan failed:', err);
-      await cleanup();
-      setError(err.message || 'Scan failed');
+      console.error('[Capacitor BLE] Failed to schedule scan:', err);
+      setError(err.message || 'Failed to schedule scan');
       setIsConnecting(false);
     }
-  }, []);
+  }, [isConnected]);
 
   // Connect to device (first time or manual)
   const connect = useCallback(async () => {
@@ -512,14 +562,6 @@ export const useBLECapacitor = () => {
       throw err;
     }
   }, [deviceId]);
-
-  // Refs to hold latest notification data without triggering re-renders
-  const notificationDataRef = useRef({
-    temperature: null,
-    currentTime: null,
-    batteryLevel: null
-  });
-  const updateTimerRef = useRef(null);
 
   // Batch update function - updates state at most once per second
   const batchUpdateDeviceData = useCallback(() => {
