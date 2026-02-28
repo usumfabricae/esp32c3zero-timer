@@ -46,6 +46,14 @@ export const useBLECapacitor = () => {
   const scanTimeoutRef = useRef(null);
   const isScanningRef = useRef(false);
   const deviceFoundRef = useRef(false);
+  
+  // Refs to hold latest notification data without triggering re-renders
+  const notificationDataRef = useRef({
+    temperature: null,
+    currentTime: null,
+    batteryLevel: null
+  });
+  const updateTimerRef = useRef(null);
 
   // Load saved device ID from localStorage
   useEffect(() => {
@@ -81,6 +89,11 @@ export const useBLECapacitor = () => {
     return () => {
       // Cleanup on unmount
       const cleanup = async () => {
+        // Clear update timer
+        if (updateTimerRef.current) {
+          clearTimeout(updateTimerRef.current);
+        }
+        
         // Clear timeout
         if (scanTimeoutRef.current) {
           clearTimeout(scanTimeoutRef.current);
@@ -500,6 +513,22 @@ export const useBLECapacitor = () => {
     }
   }, [deviceId]);
 
+  // Refs to hold latest notification data without triggering re-renders
+  const notificationDataRef = useRef({
+    temperature: null,
+    currentTime: null,
+    batteryLevel: null
+  });
+  const updateTimerRef = useRef(null);
+
+  // Batch update function - updates state at most once per second
+  const batchUpdateDeviceData = useCallback(() => {
+    setDeviceData(prev => ({
+      ...prev,
+      ...notificationDataRef.current
+    }));
+  }, []);
+
   // Setup notifications
   const setupNotifications = useCallback(async () => {
     if (!deviceId || !isConnected) return;
@@ -512,7 +541,13 @@ export const useBLECapacitor = () => {
         CHAR_TEMPERATURE,
         (data) => {
           const temp = DataFormatter.decodeTemperature(data);
-          setDeviceData(prev => ({ ...prev, temperature: temp }));
+          notificationDataRef.current.temperature = temp;
+          
+          // Debounce updates - batch them every 1 second
+          if (updateTimerRef.current) {
+            clearTimeout(updateTimerRef.current);
+          }
+          updateTimerRef.current = setTimeout(batchUpdateDeviceData, 1000);
         }
       );
 
@@ -523,7 +558,13 @@ export const useBLECapacitor = () => {
         CHAR_CURRENT_TIME,
         (data) => {
           const time = DataFormatter.decodeCurrentTime(data);
-          setDeviceData(prev => ({ ...prev, currentTime: time }));
+          notificationDataRef.current.currentTime = time;
+          
+          // Debounce updates
+          if (updateTimerRef.current) {
+            clearTimeout(updateTimerRef.current);
+          }
+          updateTimerRef.current = setTimeout(batchUpdateDeviceData, 1000);
         }
       );
 
@@ -534,10 +575,13 @@ export const useBLECapacitor = () => {
         CHAR_BATTERY_LEVEL,
         (data) => {
           const level = data.getUint8(0);
-          setDeviceData(prev => ({ 
-            ...prev, 
-            batteryLevel: level
-          }));
+          notificationDataRef.current.batteryLevel = level;
+          
+          // Debounce updates
+          if (updateTimerRef.current) {
+            clearTimeout(updateTimerRef.current);
+          }
+          updateTimerRef.current = setTimeout(batchUpdateDeviceData, 1000);
         }
       );
 
@@ -545,7 +589,7 @@ export const useBLECapacitor = () => {
     } catch (err) {
       console.error('[Capacitor BLE] Setup notifications failed:', err);
     }
-  }, [deviceId, isConnected]);
+  }, [deviceId, isConnected, batchUpdateDeviceData]);
 
   return {
     isConnected,

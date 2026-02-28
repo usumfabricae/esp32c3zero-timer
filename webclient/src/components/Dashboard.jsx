@@ -9,9 +9,6 @@ function Dashboard({ ble }) {
   const { deviceData, isConnected } = ble;
   const [notification, setNotification] = useState(null);
   const [isReloading, setIsReloading] = useState(false);
-  
-  // Debug logging
-  console.log('[Dashboard] deviceData:', deviceData);
 
   // Get today's day of week (0 = Monday, 6 = Sunday)
   const getTodaySchedule = () => {
