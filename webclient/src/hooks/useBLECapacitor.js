@@ -415,10 +415,12 @@ export const useBLECapacitor = () => {
 
   // Read temperature
   const readTemperature = useCallback(async () => {
+    console.log('[Capacitor BLE] readTemperature() called');
     try {
       const data = await readCharacteristic(CHAR_TEMPERATURE);
       const temp = DataFormatter.decodeTemperature(data);
       setDeviceData(prev => ({ ...prev, temperature: temp }));
+      console.log('[Capacitor BLE] Temperature read successfully:', temp);
       return temp;
     } catch (err) {
       console.error('[Capacitor BLE] Read temperature failed:', err);
@@ -428,10 +430,12 @@ export const useBLECapacitor = () => {
 
   // Read current time
   const readCurrentTime = useCallback(async () => {
+    console.log('[Capacitor BLE] readCurrentTime() called');
     try {
       const data = await readCharacteristic(CHAR_CURRENT_TIME);
       const time = DataFormatter.decodeCurrentTime(data);
       setDeviceData(prev => ({ ...prev, currentTime: time }));
+      console.log('[Capacitor BLE] Current time read successfully:', time);
       return time;
     } catch (err) {
       console.error('[Capacitor BLE] Read current time failed:', err);
@@ -441,6 +445,7 @@ export const useBLECapacitor = () => {
 
   // Read relay state
   const readRelayState = useCallback(async () => {
+    console.log('[Capacitor BLE] readRelayState() called');
     try {
       const data = await readCharacteristic(CHAR_RELAY_STATE);
       const { state, overrideEndTime } = DataFormatter.decodeRelayState(data);
@@ -449,6 +454,7 @@ export const useBLECapacitor = () => {
         relayState: state,
         relayOverrideEndTime: overrideEndTime 
       }));
+      console.log('[Capacitor BLE] Relay state read successfully:', state, overrideEndTime);
       return { state, overrideEndTime };
     } catch (err) {
       console.error('[Capacitor BLE] Read relay state failed:', err);
@@ -470,8 +476,10 @@ export const useBLECapacitor = () => {
 
   // Read schedule
   const readSchedule = useCallback(async () => {
+    console.log('[Capacitor BLE] readSchedule() called');
     try {
       // Request full schedule
+      console.log('[Capacitor BLE] Writing 0xFF to schedule characteristic to prepare read');
       const requestCmd = new Uint8Array([0xFF]);
       await writeCharacteristic(CHAR_SCHEDULE, new DataView(requestCmd.buffer));
       
@@ -479,6 +487,7 @@ export const useBLECapacitor = () => {
       await new Promise(resolve => setTimeout(resolve, 50));
       
       // Read chunks
+      console.log('[Capacitor BLE] Starting to read schedule chunks');
       let scheduleBuffer = '';
       const maxChunkSize = 22;
       let chunkCount = 0;
@@ -487,6 +496,7 @@ export const useBLECapacitor = () => {
         const data = await readCharacteristic(CHAR_SCHEDULE);
         
         if (data.byteLength === 0) {
+          console.log('[Capacitor BLE] Schedule read complete (empty chunk received)');
           break;
         }
         
@@ -494,16 +504,20 @@ export const useBLECapacitor = () => {
         const chunk = decoder.decode(data);
         scheduleBuffer += chunk;
         chunkCount++;
+        console.log(`[Capacitor BLE] Read schedule chunk ${chunkCount}: ${data.byteLength} bytes`);
         
         if (data.byteLength < maxChunkSize || chunkCount > 20) {
+          console.log('[Capacitor BLE] Schedule read complete (last chunk or max chunks reached)');
           break;
         }
         
         await new Promise(resolve => setTimeout(resolve, 20));
       }
       
+      console.log(`[Capacitor BLE] Total schedule data: ${scheduleBuffer.length} chars, ${chunkCount} chunks`);
       const schedule = DataFormatter.decodeSchedule(scheduleBuffer);
       setDeviceData(prev => ({ ...prev, schedule }));
+      console.log('[Capacitor BLE] Schedule decoded successfully');
       return schedule;
     } catch (err) {
       console.error('[Capacitor BLE] Read schedule failed:', err);
@@ -571,67 +585,19 @@ export const useBLECapacitor = () => {
     }));
   }, []);
 
-  // Setup notifications
+  // Setup notifications (NOT IMPLEMENTED ON DEVICE - this is a no-op for Capacitor)
   const setupNotifications = useCallback(async () => {
     if (!deviceId || !isConnected) return;
 
-    try {
-      // Temperature notifications
-      await BleClient.startNotifications(
-        deviceId,
-        SERVICE_UUID,
-        CHAR_TEMPERATURE,
-        (data) => {
-          const temp = DataFormatter.decodeTemperature(data);
-          notificationDataRef.current.temperature = temp;
-          
-          // Debounce updates - batch them every 1 second
-          if (updateTimerRef.current) {
-            clearTimeout(updateTimerRef.current);
-          }
-          updateTimerRef.current = setTimeout(batchUpdateDeviceData, 1000);
-        }
-      );
-
-      // Time notifications
-      await BleClient.startNotifications(
-        deviceId,
-        SERVICE_UUID,
-        CHAR_CURRENT_TIME,
-        (data) => {
-          const time = DataFormatter.decodeCurrentTime(data);
-          notificationDataRef.current.currentTime = time;
-          
-          // Debounce updates
-          if (updateTimerRef.current) {
-            clearTimeout(updateTimerRef.current);
-          }
-          updateTimerRef.current = setTimeout(batchUpdateDeviceData, 1000);
-        }
-      );
-
-      // Battery notifications
-      await BleClient.startNotifications(
-        deviceId,
-        BATTERY_SERVICE_UUID,
-        CHAR_BATTERY_LEVEL,
-        (data) => {
-          const level = data.getUint8(0);
-          notificationDataRef.current.batteryLevel = level;
-          
-          // Debounce updates
-          if (updateTimerRef.current) {
-            clearTimeout(updateTimerRef.current);
-          }
-          updateTimerRef.current = setTimeout(batchUpdateDeviceData, 1000);
-        }
-      );
-
-      console.log('[Capacitor BLE] Notifications enabled');
-    } catch (err) {
-      console.error('[Capacitor BLE] Setup notifications failed:', err);
-    }
-  }, [deviceId, isConnected, batchUpdateDeviceData]);
+    console.log('[Capacitor BLE] setupNotifications() called - skipping (not implemented on device)');
+    
+    // The ESP32 device declares characteristics with NOTIFY property but doesn't
+    // actually send notifications. Attempting to enable notifications causes
+    // GATT_READ_NOT_PERMIT errors. The web client should poll values instead.
+    
+    // Do nothing - just return successfully
+    return Promise.resolve();
+  }, [deviceId, isConnected]);
 
   return {
     isConnected,

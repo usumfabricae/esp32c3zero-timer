@@ -651,6 +651,41 @@ static void gatts_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_t gatts_
         ESP_LOGI(GATTS_TAG, "GATT read request, conn_id %d, trans_id %lu, handle %d", 
                  param->read.conn_id, param->read.trans_id, param->read.handle);
         
+        // Log which characteristic is being read
+        if (param->read.handle == relay_char_handle) {
+            ESP_LOGI(GATTS_TAG, "  -> Reading RELAY_STATE (0xFF02)");
+        } else if (param->read.handle == temp_char_handle) {
+            ESP_LOGI(GATTS_TAG, "  -> Reading TEMP_THRESHOLDS (0xFF06)");
+        } else if (param->read.handle == std_temp_char_handle) {
+            ESP_LOGI(GATTS_TAG, "  -> Reading STD_TEMPERATURE (0x2A6E)");
+        } else if (param->read.handle == std_time_char_handle) {
+            ESP_LOGI(GATTS_TAG, "  -> Reading STD_CURRENT_TIME (0x2A2B)");
+        } else if (param->read.handle == battery_level_char_handle) {
+            ESP_LOGI(GATTS_TAG, "  -> Reading BATTERY_LEVEL (0x2A19)");
+        } else if (param->read.handle == schedule_char_handle) {
+            ESP_LOGI(GATTS_TAG, "  -> Reading SCHEDULE (0xFF05)");
+        } else if (param->read.handle == wifi_ssid_char_handle) {
+            ESP_LOGI(GATTS_TAG, "  -> Reading WIFI_SSID (0xFF08)");
+        } else if (param->read.handle == passkey_char_handle) {
+            ESP_LOGE(GATTS_TAG, "  -> INVALID: Attempting to read PASSKEY (0xFF04) - WRITE ONLY!");
+        } else if (param->read.handle == temp_cal_char_handle) {
+            ESP_LOGE(GATTS_TAG, "  -> INVALID: Attempting to read TEMP_CALIBRATION (0xFF07) - WRITE ONLY!");
+        } else if (param->read.handle == batt_cal_char_handle) {
+            ESP_LOGE(GATTS_TAG, "  -> INVALID: Attempting to read BATTERY_CALIBRATION (0xFF0B) - WRITE ONLY!");
+        } else if (param->read.handle == wifi_pass_char_handle) {
+            ESP_LOGE(GATTS_TAG, "  -> INVALID: Attempting to read WIFI_PASSWORD (0xFF09) - WRITE ONLY!");
+        } else if (param->read.handle == ble_passkey_char_handle) {
+            ESP_LOGE(GATTS_TAG, "  -> INVALID: Attempting to read BLE_PASSKEY (0xFF0A) - WRITE ONLY!");
+        } else if (param->read.handle == std_manufacturer_char_handle) {
+            ESP_LOGI(GATTS_TAG, "  -> Reading MANUFACTURER_NAME (0x2A29)");
+        } else if (param->read.handle == std_model_char_handle) {
+            ESP_LOGI(GATTS_TAG, "  -> Reading MODEL_NUMBER (0x2A24)");
+        } else if (param->read.handle == std_firmware_char_handle) {
+            ESP_LOGI(GATTS_TAG, "  -> Reading FIRMWARE_REVISION (0x2A26)");
+        } else {
+            ESP_LOGW(GATTS_TAG, "  -> UNKNOWN handle %d", param->read.handle);
+        }
+        
         esp_gatt_rsp_t rsp;
         memset(&rsp, 0, sizeof(esp_gatt_rsp_t));
         rsp.attr_value.handle = param->read.handle;
@@ -787,6 +822,18 @@ static void gatts_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_t gatts_
             rsp.attr_value.len = strlen(ssid);
             memcpy(rsp.attr_value.value, ssid, rsp.attr_value.len);
             ESP_LOGI(GATTS_TAG, "Sent WiFi SSID: %s", ssid);
+        } else {
+            // Unhandled characteristic - this will cause GATT_READ_NOT_PERMIT
+            ESP_LOGE(GATTS_TAG, "  -> ERROR: Unhandled read for handle %d - no response prepared!", param->read.handle);
+            ESP_LOGE(GATTS_TAG, "  -> Known handles: relay=%d, temp_thresh=%d, std_temp=%d, std_time=%d, battery=%d, schedule=%d, wifi_ssid=%d",
+                     relay_char_handle, temp_char_handle, std_temp_char_handle, std_time_char_handle,
+                     battery_level_char_handle, schedule_char_handle, wifi_ssid_char_handle);
+            ESP_LOGE(GATTS_TAG, "  -> Write-only handles: passkey=%d, temp_cal=%d, batt_cal=%d, wifi_pass=%d, ble_passkey=%d",
+                     passkey_char_handle, temp_cal_char_handle, batt_cal_char_handle, 
+                     wifi_pass_char_handle, ble_passkey_char_handle);
+            // Send error response
+            esp_ble_gatts_send_response(gatts_if, param->read.conn_id, param->read.trans_id, ESP_GATT_READ_NOT_PERMIT, &rsp);
+            break;
         }
         
         esp_ble_gatts_send_response(gatts_if, param->read.conn_id, param->read.trans_id, ESP_GATT_OK, &rsp);
