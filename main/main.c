@@ -165,6 +165,14 @@ void app_main(void)
         tzset();
         ESP_LOGI(TAG, "Timezone configured: %s", TIMEZONE_CONFIG);
         
+        // Print actual wake time
+        time_t now;
+        struct tm timeinfo;
+        time(&now);
+        localtime_r(&now, &timeinfo);
+        ESP_LOGI(TAG, "Actual wake time: %02d:%02d:%02d (expected XX:XX:59)", 
+                 timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+        
         // Check if we need to resync NTP (every 6 hours)
         if (should_resync_ntp()) {
             ESP_LOGI(TAG, "Resyncing time with NTP...");
@@ -323,7 +331,73 @@ void app_main(void)
     // Record start time for light sleep period
     light_sleep_start_time = xTaskGetTickCount() * portTICK_PERIOD_MS / 1000;
     
-    // Main loop: stay in light sleep, then transition to deep sleep
+    // Calculate precise sleep timing based on current time
+    time_t now;
+    struct tm timeinfo;
+    time(&now);
+    localtime_r(&now, &timeinfo);
+    
+    int current_second = timeinfo.tm_sec;
+    ESP_LOGI(TAG, "Current time: %02d:%02d:%02d", 
+             timeinfo.tm_hour, timeinfo.tm_min, current_second);
+    
+    // Target sleep second is 5 (XX:XX:05)
+    int target_sleep_second = 5;
+    
+    // If we're past second 5, we woke up late - enter deep sleep immediately
+    if (current_second > target_sleep_second) {
+        ESP_LOGI(TAG, "Woke late (past XX:XX:05), entering deep sleep immediately");
+        
+        // Check scheduler before sleep
+        check_scheduler_and_update_relay();
+        
+        // Get final timestamp
+        time(&now);
+        localtime_r(&now, &timeinfo);
+        ESP_LOGI(TAG, "Actual time before deep sleep: %02d:%02d:%02d", 
+                 timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+        
+        // Deinitialize BLE before deep sleep
+        ESP_LOGI(TAG, "Deinitializing BLE for deep sleep");
+        ble_server_deinit();
+        
+        // Turn off LED
+        led_status_set(LED_STATUS_OFF);
+        
+        // Calculate sleep duration to wake at next XX:XX:59
+        // If we're at XX:XX:08, we want to sleep until XX:XX:59 = 51 seconds
+        int sleep_start_second = timeinfo.tm_sec;
+        int target_wake_second = 59;
+        int sleep_duration_sec;
+        
+        if (sleep_start_second < target_wake_second) {
+            // Wake in this minute
+            sleep_duration_sec = target_wake_second - sleep_start_second;
+        } else {
+            // Wake in next minute (shouldn't happen, but handle it)
+            sleep_duration_sec = (60 - sleep_start_second) + target_wake_second;
+        }
+        
+        uint64_t deep_sleep_us = sleep_duration_sec * 1000000ULL;
+        
+        ESP_LOGI(TAG, "Sleeping from XX:XX:%02d for %d seconds to wake at XX:XX:59", 
+                 sleep_start_second, sleep_duration_sec);
+        
+        // Configure deep sleep timer wakeup
+        esp_sleep_enable_timer_wakeup(deep_sleep_us);
+        
+        ESP_LOGI(TAG, "Entering deep sleep for %d seconds", sleep_duration_sec);
+        vTaskDelay(pdMS_TO_TICKS(100));  // Allow log to flush
+        
+        // Enter deep sleep (never returns - device will reset)
+        esp_deep_sleep_start();
+    }
+    
+    // We're before XX:XX:05 - normal operation
+    int seconds_until_sleep = target_sleep_second - current_second;
+    ESP_LOGI(TAG, "Will enter deep sleep in %d seconds (at XX:XX:05)", seconds_until_sleep);
+    
+    // Main loop: stay in light sleep, then transition to deep sleep at precise time
     while (1) {
         vTaskDelay(pdMS_TO_TICKS(1000));  // Check every second
         
@@ -333,13 +407,36 @@ void app_main(void)
             
             // Update scheduler while connected
             check_scheduler_and_update_relay();
+            
+            // Recalculate sleep timing since we're staying awake
+            time(&now);
+            localtime_r(&now, &timeinfo);
+            current_second = timeinfo.tm_sec;
+            
+            if (current_second <= target_sleep_second) {
+                seconds_until_sleep = target_sleep_second - current_second;
+            } else {
+                seconds_until_sleep = (60 - current_second) + target_sleep_second;
+            }
         } else {
-            // Not connected - check if light sleep period has elapsed
+            // Not connected - check if it's time for deep sleep
             uint32_t current_time = xTaskGetTickCount() * portTICK_PERIOD_MS / 1000;
             uint32_t elapsed = current_time - light_sleep_start_time;
             
-            if (elapsed >= LIGHT_SLEEP_DURATION_SEC) {
-                ESP_LOGI(TAG, "Light sleep period ended (%lu seconds), entering deep sleep", elapsed);
+            // Get current second to check if we've reached XX:XX:05
+            time(&now);
+            localtime_r(&now, &timeinfo);
+            current_second = timeinfo.tm_sec;
+            
+            // Enter deep sleep at XX:XX:05
+            if (current_second == target_sleep_second) {
+                // Get final timestamp before sleep
+                time(&now);
+                localtime_r(&now, &timeinfo);
+                
+                ESP_LOGI(TAG, "Reached XX:XX:05, entering deep sleep");
+                ESP_LOGI(TAG, "Actual time before deep sleep: %02d:%02d:%02d", 
+                         timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
                 
                 // Check scheduler one last time before deep sleep
                 check_scheduler_and_update_relay();
@@ -351,10 +448,36 @@ void app_main(void)
                 // Turn off LED
                 led_status_set(LED_STATUS_OFF);
                 
-                // Configure deep sleep timer wakeup
-                esp_sleep_enable_timer_wakeup(DEEP_SLEEP_DURATION_SEC * 1000000ULL);
+                // Calculate deep sleep duration to wake at XX:XX:59
+                // Get current second to calculate precise sleep duration
+                time(&now);
+                localtime_r(&now, &timeinfo);
+                int sleep_start_second = timeinfo.tm_sec;
                 
-                ESP_LOGI(TAG, "Entering deep sleep for %d seconds", DEEP_SLEEP_DURATION_SEC);
+                // Target wake second is 59
+                int target_wake_second = 59;
+                int sleep_duration_sec;
+                
+                if (sleep_start_second <= target_wake_second) {
+                    // Wake in this minute
+                    sleep_duration_sec = target_wake_second - sleep_start_second;
+                } else {
+                    // Wake in next minute (shouldn't happen if we sleep at XX:XX:05)
+                    sleep_duration_sec = (60 - sleep_start_second) + target_wake_second;
+                }
+                
+                // Add 1 second buffer to ensure we wake at or just after XX:XX:59
+                sleep_duration_sec += 1;
+                
+                uint64_t deep_sleep_us = sleep_duration_sec * 1000000ULL;
+                
+                ESP_LOGI(TAG, "Sleeping from XX:XX:%02d for %d seconds to wake at XX:XX:59", 
+                         sleep_start_second, sleep_duration_sec);
+                
+                // Configure deep sleep timer wakeup
+                esp_sleep_enable_timer_wakeup(deep_sleep_us);
+                
+                ESP_LOGI(TAG, "Entering deep sleep for %d seconds", sleep_duration_sec);
                 vTaskDelay(pdMS_TO_TICKS(100));  // Allow log to flush
                 
                 // Enter deep sleep (never returns - device will reset)
