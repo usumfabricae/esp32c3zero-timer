@@ -5,7 +5,7 @@ import DataFormatter from '../utils/dataFormatter.js';
 // BLE Service and Characteristic UUIDs
 const SERVICE_UUID = '000000ff-0000-1000-8000-00805f9b34fb';
 const BATTERY_SERVICE_UUID = '0000180f-0000-1000-8000-00805f9b34fb';
-const CHAR_TEMPERATURE = '00002a6e-0000-1000-8000-00805f9b34fb';
+const CHAR_TEMPERATURE = '0000ff0c-0000-1000-8000-00805f9b34fb';  // Changed from 0x2A6E to 0xFF0C for Capacitor compatibility
 const CHAR_CURRENT_TIME = '00002a2b-0000-1000-8000-00805f9b34fb';
 const CHAR_RELAY_STATE = '0000ff02-0000-1000-8000-00805f9b34fb';
 const CHAR_SCHEDULE = '0000ff05-0000-1000-8000-00805f9b34fb';

@@ -98,12 +98,9 @@ function Dashboard({ ble }) {
     });
 
     try {
-      // Read all data from device - handle each independently to avoid one failure breaking all
+      // Read all data from device
       await Promise.all([
-        ble.readTemperature().catch(err => {
-          console.warn('[Dashboard] Temperature read failed:', err);
-          return null;
-        }),
+        ble.readTemperature(),
         ble.readRelayState(),
         ble.readSchedule(),
         ble.readTemperatureThresholds(),
