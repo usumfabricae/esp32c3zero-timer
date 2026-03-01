@@ -8,13 +8,237 @@ A React-based application for connecting to and controlling the ESP32-C3 tempera
 - **Browser Requirements:** Chrome 56+, Edge 79+, Opera 43+
 - **Protocol:** Web Bluetooth API
 - **Deployment:** HTTPS required (localhost allowed for development)
-- **Access:** https://usumfabricae.github.io/esp32c3zero-timer/
+- **Live Demo:** https://usumfabricae.github.io/esp32c3zero-timer/
 
 ### Android Application
 - **Requirements:** Android 7.0+ (API 24+)
 - **Protocol:** Capacitor Bluetooth LE plugin
-- **Build:** Automated via Codemagic CI/CD
+- **Build System:** Automated via Codemagic CI/CD
 - **Distribution:** APK download from Codemagic artifacts
+- **Package:** `net.superfede.BleWebInterface`
+
+## Dual-Mode BLE Architecture
+
+The app automatically detects the environment and uses the appropriate BLE implementation:
+
+### Platform Detection
+
+```
+App.jsx
+  └─> useBLEUnified.js (Auto-detection)
+       ├─> useBLE.js (Web Bluetooth API - for web/PWA)
+       └─> useBLECapacitor.js (Capacitor BLE - for Android app)
+```
+
+**Detection Logic:**
+```javascript
+import { Capacitor } from '@capacitor/core';
+
+const isNative = Capacitor.isNativePlatform();
+if (isNative) {
+  // Use Capacitor BLE plugin
+} else {
+  // Use Web Bluetooth API
+}
+```
+
+### Implementation Files
+
+1. **useBLEUnified.js** - Smart wrapper with automatic platform detection
+2. **useBLE.js** - Web Bluetooth API implementation (web/PWA)
+3. **useBLECapacitor.js** - Capacitor Bluetooth LE implementation (Android app)
+4. **dataFormatter.js** - Shared data conversion utilities
+
+### Unified API
+
+Both implementations provide identical API - no code changes needed in components:
+
+```javascript
+import { useBLEUnified } from './hooks/useBLEUnified.js';
+
+function MyComponent() {
+  const ble = useBLEUnified();
+  
+  // Same API works in both environments
+  await ble.connect();
+  await ble.readTemperature();
+  await ble.writeRelayState(1, 60);
+  await ble.disconnect();
+}
+```
+
+### API Compatibility Matrix
+
+| Method | Web Bluetooth | Capacitor BLE | Notes |
+|--------|---------------|---------------|-------|
+| connect() | ✅ | ✅ | Auto-reconnect on Capacitor |
+| disconnect() | ✅ | ✅ | Full support |
+| readTemperature() | ✅ | ✅ | Full support |
+| readCurrentTime() | ✅ | ✅ | Full support |
+| readRelayState() | ✅ | ✅ | Full support |
+| writeRelayState() | ✅ | ✅ | Full support |
+| readSchedule() | ✅ | ✅ | Chunked reading |
+| writeSchedule() | ✅ | ✅ | Full support |
+| readTemperatureThresholds() | ✅ | ✅ | Full support |
+| writeTemperatureThresholds() | ✅ | ✅ | Full support |
+| readBatteryLevel() | ✅ | ✅ | Full support |
+| setupNotifications() | ✅ | ✅ | Not implemented on device |
+
+### Platform Differences
+
+#### UUID Format
+
+**Web Bluetooth:**
+- Accepts short UUIDs: `0x2A6E`
+- Automatically expands to full format
+
+**Capacitor BLE:**
+- Requires full 128-bit UUIDs: `00002a6e-0000-1000-8000-00805f9b34fb`
+- Conversion handled automatically by `toFullUUID()` helper
+
+#### Connection Behavior
+
+**Web Bluetooth:**
+- Shows device picker on first connection
+- Auto-reconnects to paired devices (Chrome 85+)
+- Fast connection (1-2 seconds)
+
+**Capacitor BLE:**
+- Saves device ID to localStorage
+- Smart scanning at XX:XX:57 (synchronized with device wake)
+- Connection in 3-5 seconds
+- Automatic retry on failure
+
+#### Permissions
+
+**Web Bluetooth:**
+- Bluetooth permission requested by browser
+- No additional setup needed
+
+**Capacitor BLE:**
+- Requires Android manifest permissions:
+  ```xml
+  <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
+  <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+  <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+  ```
+- Automatically added by build script
+
+### Deployment Options
+
+#### Option 1: PWA (Web Bluetooth)
+**Pros:**
+- No app store needed
+- Instant updates
+- Works on desktop too
+- Smaller download size
+- Easy distribution
+
+**Cons:**
+- Requires Chrome/Edge browser
+- iOS not supported
+- Less "native" feel
+
+#### Option 2: Android App (Capacitor)
+**Pros:**
+- Feels more native
+- Can add to Play Store
+- Better offline support
+- More control over permissions
+- Background capabilities
+
+**Cons:**
+- Larger download size
+- Updates require new APK
+- Android only
+- More complex distribution
+
+#### Option 3: Both!
+Offer both options to users:
+- PWA for quick access and desktop users
+- Android app for users who prefer native apps
+- Same codebase, same features
+
+### Adding New BLE Features
+
+When adding new characteristics:
+
+1. **Update useBLE.js** (Web Bluetooth):
+   ```javascript
+   const readNewFeature = useCallback(async () => {
+     const char = characteristics[CHAR_NEW_FEATURE];
+     const value = await char.readValue();
+     return DataFormatter.decodeNewFeature(value);
+   }, [characteristics]);
+   ```
+
+2. **Update useBLECapacitor.js** (Capacitor):
+   ```javascript
+   const readNewFeature = useCallback(async () => {
+     const data = await readCharacteristic(CHAR_NEW_FEATURE);
+     return DataFormatter.decodeNewFeature(data);
+   }, [readCharacteristic]);
+   ```
+
+3. **Update dataFormatter.js**:
+   ```javascript
+   decodeNewFeature(dataView) {
+     // Decode logic
+   }
+   ```
+
+4. **Test both platforms**
+
+### Performance Comparison
+
+**Web Bluetooth:**
+- Connection: 1-2 seconds
+- Memory: Low (direct browser API)
+- CPU: Minimal overhead
+- Battery: Efficient
+
+**Capacitor BLE:**
+- Connection: 2-3 seconds (with smart scanning)
+- Memory: Moderate (native bridge)
+- CPU: Slight overhead (bridge communication)
+- Battery: Efficient (optimized scanning)
+
+Both are performant enough for this use case.
+
+### Development Workflow
+
+1. **Edit React components** in `src/`
+2. **Test in web browser** first:
+   ```bash
+   npm run dev
+   # Open https://localhost:3000
+   ```
+3. **Build for Android**:
+   ```bash
+   CAPACITOR=true npm run build
+   npx cap sync android
+   ```
+4. **Test on device**:
+   ```bash
+   npx cap run android
+   ```
+
+### Debugging
+
+**Web Mode:**
+- Use browser DevTools
+- Check console for BLE logs
+- Network tab for service worker
+
+**Android Mode:**
+- Use Android Studio logcat
+- Chrome DevTools for WebView: `chrome://inspect`
+- Filter logs:
+  ```powershell
+  adb logcat --pid=<PID> Capacitor/Console:* Device:* *:S
+  ```
+
+
 
 ## Features
 
@@ -64,8 +288,14 @@ This application requires a browser with Web Bluetooth API support:
 
 ### Prerequisites
 
+**For Web Development:**
 - Node.js v14 or higher
 - npm or yarn package manager
+
+**For Android Development:**
+- All web prerequisites
+- Android Studio
+- Java 21 (for Gradle builds)
 
 ### Installation
 
@@ -74,7 +304,7 @@ cd webclient
 npm install
 ```
 
-### Development Server
+### Development Server (Web)
 
 ```bash
 npm run dev
@@ -97,11 +327,30 @@ The dev server is configured to listen on all network interfaces (`0.0.0.0`), al
 
 ### Building for Production
 
+**Web Build:**
 ```bash
 npm run build
 ```
 
-The production build will be created in the `dist/` directory.
+**Android Build:**
+```bash
+# Build web assets for Android
+CAPACITOR=true npm run build
+
+# Sync to Android project
+npx cap sync android
+
+# Build APK (debug)
+cd android
+./gradlew assembleDebug
+
+# Or open in Android Studio
+npx cap open android
+```
+
+**Output Locations:**
+- Web: `dist/` directory
+- Android: `android/app/build/outputs/apk/debug/app-debug.apk`
 
 ### Preview Production Build
 
@@ -389,24 +638,164 @@ server {
 
 ## PWA (Progressive Web App) Support
 
-The web interface now supports installation as a Progressive Web App on Android devices!
+The web interface supports installation as a Progressive Web App on Android devices!
 
-**Benefits:**
+### Benefits
 - Install as native-feeling app on home screen
 - Standalone mode (no browser UI)
 - Faster loading with service worker caching
 - Works identically to web version
+- Offline caching for app shell
 
-**Setup Instructions:**
-See `PWA_SETUP.md` for complete installation and usage guide.
+### Requirements
+- Android device with Chrome/Edge browser
+- HTTPS connection (provided by GitHub Pages or localhost)
+- App icons (192x192 and 512x512 PNG)
 
-**Quick Start:**
-1. Generate app icons: Open `generate-icons.html` in browser
-2. Build: `npm run build`
-3. Preview: `npm run preview`
-4. Install on Android: Visit app URL and select "Install app" from browser menu
+### Installation Steps
 
-**Note:** PWA with Web Bluetooth only works on Android (Chrome/Edge). iOS does not support Web Bluetooth API.
+**For Users:**
+1. Visit the app URL in Chrome/Edge on Android
+2. Wait for install banner or tap menu (⋮) → "Install app"
+3. Confirm installation
+4. App icon appears on home screen
+
+**For Developers:**
+1. Generate app icons:
+   ```bash
+   cd webclient
+   # Open generate-icons.html in browser and download icons
+   # Or use: node create-pwa-icons.js (creates SVG, convert to PNG)
+   ```
+
+2. Place icons in `public/` folder:
+   - `icon-192.png` (192x192 pixels)
+   - `icon-512.png` (512x512 pixels)
+
+3. Build and test:
+   ```bash
+   npm run build
+   npm run preview
+   # Visit https://localhost:4173/esp32c3zero-timer/
+   ```
+
+4. Verify PWA readiness:
+   - Open Chrome DevTools → Application → Manifest
+   - Check for errors
+   - Verify icons are visible
+   - Service worker should show "activated and running"
+
+### PWA Configuration
+
+**Manifest:** `public/manifest.json`
+```json
+{
+  "name": "ESP32 Relay Timer",
+  "short_name": "Relay Timer",
+  "start_url": "/esp32c3zero-timer/",
+  "display": "standalone",
+  "theme_color": "#2196F3",
+  "background_color": "#ffffff",
+  "icons": [
+    {
+      "src": "/esp32c3zero-timer/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/esp32c3zero-timer/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
+```
+
+**Service Worker:** `public/sw.js`
+- Caches app shell for offline access
+- Provides faster loading on repeat visits
+- Update cache version to force refresh
+
+### Customization
+
+**Change App Name:**
+Edit `public/manifest.json`:
+```json
+{
+  "name": "Your Custom Name",
+  "short_name": "Short Name"
+}
+```
+
+**Change Theme Colors:**
+```json
+{
+  "theme_color": "#your-color",
+  "background_color": "#your-color"
+}
+```
+
+### PWA Troubleshooting
+
+**"Install" button doesn't appear:**
+- Verify both icon files exist in `public/` folder
+- Check icons are accessible at their URLs
+- Open DevTools → Application → Manifest (check for errors)
+- Ensure service worker is running
+- Must be served over HTTPS
+- Not in incognito mode
+- Not already installed
+
+**Icons show as broken:**
+- Verify icon dimensions (exactly 192x192 and 512x512)
+- Check file format is PNG
+- Clear browser cache and rebuild
+
+**Service worker not registering:**
+- Check `sw.js` is in `public/` folder
+- Verify no syntax errors in `sw.js`
+- Clear browser cache
+- Check browser console for errors
+
+**App installs but won't open:**
+- Verify `start_url` in manifest matches your URL structure
+- Check `scope` is correct
+- Test by visiting start_url directly
+
+**To clear cached PWA:**
+1. Uninstall the app from home screen
+2. Clear browser cache
+3. Update cache version in `sw.js`
+4. Rebuild and reinstall
+
+### Testing PWA
+
+**Local Testing:**
+```bash
+npm run build
+npm run preview
+# Open https://localhost:4173/esp32c3zero-timer/
+# Check DevTools → Application tab
+```
+
+**Android Testing:**
+1. Deploy to GitHub Pages
+2. Visit URL on Android Chrome/Edge
+3. Install from browser menu
+4. Test standalone mode
+
+**Lighthouse Audit:**
+- Chrome DevTools → Lighthouse
+- Run "Progressive Web App" audit
+- Fix any reported issues
+
+### Limitations
+- **iOS Not Supported:** Web Bluetooth API not available on iOS
+- **Requires Connection:** BLE requires active device connection
+- **Partial Offline:** App shell cached, but device data requires connection
+- **Browser Specific:** Only works in Chrome/Edge (Web Bluetooth requirement)
+
+
 
 ## Troubleshooting
 
@@ -445,3 +834,231 @@ See main project LICENSE file.
 
  
  
+
+
+## Android App Development
+
+### Building the Android App
+
+#### Local Build
+
+```bash
+cd webclient
+
+# 1. Build web assets for Android
+CAPACITOR=true npm run build
+
+# 2. Sync to Android project
+npx cap sync android
+
+# 3. Build APK
+cd android
+./gradlew assembleDebug
+
+# Or open in Android Studio
+npx cap open android
+```
+
+#### CI/CD Build (Codemagic)
+
+The project includes automated builds via Codemagic:
+
+**Configuration:** `codemagic.yaml`
+
+**Triggers:**
+- Push to `main` branch
+- Pull requests
+- Git tags
+
+**Build Steps:**
+1. Install npm dependencies
+2. Check for existing Capacitor config
+3. Add Android platform (if not exists)
+4. Build web app with `CAPACITOR=true`
+5. Sync Capacitor
+6. Build Android debug APK
+
+**Artifacts:**
+- APK files available in Codemagic build artifacts
+- Email notifications on build completion
+
+### Android Configuration
+
+#### Capacitor Config
+
+**File:** `capacitor.config.json`
+
+```json
+{
+  "appId": "net.superfede.BleWebInterface",
+  "appName": "BLE Timer",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  },
+  "android": {
+    "buildOptions": {
+      "releaseType": "APK"
+    }
+  }
+}
+```
+
+#### Gradle Configuration
+
+**Build Tools:** `android/build.gradle`
+```gradle
+dependencies {
+    classpath 'com.android.tools.build:gradle:8.13.0'
+}
+```
+
+**SDK Versions:** `android/variables.gradle`
+```gradle
+ext {
+    minSdkVersion = 24        // Android 7.0+
+    compileSdkVersion = 36    // Android 15
+    targetSdkVersion = 36
+}
+```
+
+#### Vite Configuration
+
+**File:** `vite.config.js`
+
+The build uses conditional base paths:
+- Web: `base: '/esp32c3zero-timer/'` (GitHub Pages)
+- Android: `base: '/'` (local files)
+
+Set via environment variable: `CAPACITOR=true npm run build`
+
+### Android Permissions
+
+Required permissions in `android/app/src/main/AndroidManifest.xml`:
+
+```xml
+<uses-permission android:name="android.permission.BLUETOOTH" />
+<uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
+<uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
+<uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+```
+
+**Note:** Location permission is required for BLE scanning on Android.
+
+### Platform Differences
+
+#### BLE Implementation
+
+**Web (useBLE.js):**
+- Uses `navigator.bluetooth` API
+- Accepts short UUIDs (0x00FF)
+- Returns DataView objects directly
+
+**Android (useBLECapacitor.js):**
+- Uses `BleClient` from Capacitor plugin
+- Requires full 128-bit UUIDs
+- UUID conversion handled automatically:
+  ```javascript
+  const toFullUUID = (shortUuid) => {
+    if (typeof shortUuid === 'number') {
+      const hex = shortUuid.toString(16).padStart(4, '0');
+      return `0000${hex}-0000-1000-8000-00805f9b34fb`;
+    }
+    return shortUuid;
+  };
+  ```
+
+#### Platform Detection
+
+**App.jsx:**
+```javascript
+import { Capacitor } from '@capacitor/core';
+
+const isNative = Capacitor.isNativePlatform();
+if (!isNative && !navigator.bluetooth) {
+  // Show browser not supported error
+}
+```
+
+### Android Troubleshooting
+
+#### Build Issues
+
+**"Invalid source release: 21"**
+- Install Java 21
+- Update Codemagic config: `java: 21`
+
+**"Capacitor config not found"**
+- Ensure `capacitor.config.json` exists (not `.js`)
+- Delete `capacitor.config.js` if present
+
+**"Browser Not Supported" in app**
+- Check platform detection in `App.jsx`
+- Verify Capacitor import is correct
+
+#### Runtime Issues
+
+**"Cannot connect to device"**
+- Grant Bluetooth and Location permissions
+- Ensure device is advertising (XX:XX:59 to XX:XX:05)
+- Check device is in range
+
+**"Characteristic not found"**
+- Clear Bluetooth cache: Settings → Apps → Clear Data
+- Unpair device: Settings → Bluetooth → Forget device
+- Reinstall app to clear cached GATT services
+
+**"Data not loading"**
+- Check DataFormatter uses correct methods
+- Verify BleClient.read() returns DataView
+- Check logcat for native errors
+
+#### Debugging
+
+**View Logs:**
+```powershell
+# All logs
+adb logcat --pid=<PID>
+
+# Filtered logs (cleaner)
+adb logcat --pid=<PID> Capacitor/Console:* Device:* *:S
+
+# Remove noise
+adb logcat --pid=<PID> | Select-String -Pattern "setRequestedFrameRate|ViewPostIme" -NotMatch
+```
+
+**Clear App Data:**
+```powershell
+# Find package name
+adb shell pm list packages | Select-String -Pattern "ble|superfede"
+
+# Clear data
+adb shell pm clear net.superfede.BleWebInterface
+
+# Or uninstall
+adb uninstall net.superfede.BleWebInterface
+```
+
+**WebView Debugging:**
+- Enable USB debugging on Android
+- Open Chrome: `chrome://inspect`
+- Select your app's WebView
+- Use DevTools to debug JavaScript
+
+### Android Installation (Users)
+
+1. Download APK from Codemagic artifacts
+2. Enable "Install from unknown sources" in Android settings
+3. Install the APK
+4. Grant Bluetooth and Location permissions
+5. Open app and connect to ESP32 device
+
+### Development Workflow
+
+1. Edit React components in `src/`
+2. Test in web browser: `npm run dev`
+3. Build for Android: `CAPACITOR=true npm run build`
+4. Sync to Android: `npx cap sync android`
+5. Test in emulator or device: `npx cap run android`
+
