@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { BleClient } from '@capacitor-community/bluetooth-le';
 import DataFormatter from '../utils/dataFormatter.js';
+import { getCurrentTime, getMillisecondsUntilScanTime } from '../utils/ntpSync.js';
 
 // BLE Service and Characteristic UUIDs
 const SERVICE_UUID = '000000ff-0000-1000-8000-00805f9b34fb';
@@ -55,28 +56,9 @@ export const useBLECapacitor = () => {
     batteryLevel: null
   });
   const updateTimerRef = useRef(null);
-
-  // Calculate milliseconds until 3 seconds before next minute
-  const getMillisecondsUntilNextScan = () => {
-    const now = new Date();
-    const seconds = now.getSeconds();
-    const milliseconds = now.getMilliseconds();
-    
-    // We want to start scanning at XX:XX:57
-    const targetSecond = 57;
-    let secondsUntilTarget;
-    
-    if (seconds < targetSecond) {
-      // Next scan is in this minute
-      secondsUntilTarget = targetSecond - seconds;
-    } else {
-      // Next scan is in next minute
-      secondsUntilTarget = (60 - seconds) + targetSecond;
-    }
-    
-    // Convert to milliseconds and subtract current milliseconds
-    return (secondsUntilTarget * 1000) - milliseconds;
-  };
+  
+  // Store time source for logging
+  const timeSourceRef = useRef('phone');
 
   // Load saved device ID from localStorage
   useEffect(() => {
@@ -240,8 +222,10 @@ export const useBLECapacitor = () => {
             await cleanup();
             
             // Schedule next scan attempt at next minute mark
-            const msUntilNextScan = getMillisecondsUntilNextScan();
-            console.log(`[Capacitor BLE] Scheduling next scan in ${(msUntilNextScan / 1000).toFixed(1)}s`);
+            // Get fresh time for next calculation
+            const { time: currentTime, source } = await getCurrentTime();
+            const msUntilNextScan = getMillisecondsUntilScanTime(currentTime);
+            console.log(`[Capacitor BLE] Scheduling next scan in ${(msUntilNextScan / 1000).toFixed(1)}s (time source: ${source})`);
             
             scheduledScanTimerRef.current = setTimeout(() => {
               if (!deviceFoundRef.current && !isConnected) {
@@ -260,8 +244,14 @@ export const useBLECapacitor = () => {
     };
 
     try {
+      // Get accurate time from NTP (with fallback to phone time)
+      const { time: currentTime, source } = await getCurrentTime();
+      timeSourceRef.current = source;
+      
       // Calculate time until 3 seconds before next minute
-      const msUntilScan = getMillisecondsUntilNextScan();
+      const msUntilScan = getMillisecondsUntilScanTime(currentTime);
+      console.log(`[Capacitor BLE] Time source: ${source}`);
+      console.log(`[Capacitor BLE] Current time: ${currentTime.toISOString()}`);
       console.log(`[Capacitor BLE] Scheduling scan in ${(msUntilScan / 1000).toFixed(1)}s (at XX:XX:57)`);
       
       // Schedule the scan to start at the optimal time
@@ -286,6 +276,12 @@ export const useBLECapacitor = () => {
     setError(null);
 
     try {
+      // Get accurate time from NTP before attempting connection
+      const { time: currentTime, source } = await getCurrentTime();
+      timeSourceRef.current = source;
+      console.log(`[Capacitor BLE] Time source: ${source}`);
+      console.log(`[Capacitor BLE] Current time: ${currentTime.toISOString()}`);
+      
       // If we have a saved device, try to reconnect in background
       if (savedDeviceId) {
         console.log('[Capacitor BLE] Attempting background reconnect...');
@@ -608,6 +604,7 @@ export const useBLECapacitor = () => {
     disconnect,
     forgetDevice,
     hasSavedDevice: !!savedDeviceId,
+    timeSource: timeSourceRef.current,
     readTemperature,
     readCurrentTime,
     readRelayState,
