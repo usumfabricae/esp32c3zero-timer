@@ -172,10 +172,12 @@ export const useBLECapacitor = () => {
       try {
         console.log('[Capacitor BLE] Starting scan for saved device:', deviceAddress);
         
-        // Start scanning for the specific device
+        // Start scanning for the specific device with low latency mode
+        // SCAN_MODE_LOW_LATENCY (2) provides fastest discovery at cost of battery
         await BleClient.requestLEScan(
           {
-            allowDuplicates: false
+            allowDuplicates: false,
+            scanMode: 2  // SCAN_MODE_LOW_LATENCY for fastest discovery
           },
           async (result) => {
             // Ignore if device already found or processed
