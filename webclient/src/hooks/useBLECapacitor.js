@@ -216,11 +216,11 @@ export const useBLECapacitor = () => {
 
         isScanningRef.current = true;
 
-        // Stop scanning after 10 seconds if device not found
-        // Device should appear within 3-4 seconds if we timed it right
+        // Stop scanning after 60 seconds if device not found
+        // This gives enough time to catch the device during its advertising window
         scanTimeoutRef.current = setTimeout(async () => {
           if (!deviceFoundRef.current) {
-            console.log('[Capacitor BLE] Scan timeout - device not found');
+            console.log('[Capacitor BLE] Scan timeout - device not found after 60s');
             await cleanup();
             
             // Schedule next scan attempt at next minute mark
@@ -235,7 +235,7 @@ export const useBLECapacitor = () => {
               }
             }, msUntilNextScan);
           }
-        }, 10000);
+        }, 60000);
 
       } catch (err) {
         console.error('[Capacitor BLE] Scan failed:', err);
