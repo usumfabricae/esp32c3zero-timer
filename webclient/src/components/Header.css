@@ -64,6 +64,16 @@
   color: var(--success-text);
 }
 
+.connection-status.connected.cloud {
+  background-color: #e3f2fd;
+  color: #1565c0;
+}
+
+.connection-status.connected.local {
+  background-color: var(--success-bg);
+  color: var(--success-text);
+}
+
 .connection-status.disconnected {
   background-color: var(--error-bg);
   color: var(--error-text);
@@ -81,8 +91,28 @@
   /* Removed infinite pulse animation for Android 15 performance */
 }
 
+.connection-status.connected.cloud .status-indicator {
+  background-color: #1565c0;
+}
+
 .connection-status.disconnected .status-indicator {
   background-color: var(--error-color);
+}
+
+.sync-time {
+  font-size: var(--font-size-xs);
+  opacity: 0.8;
+  margin-left: var(--spacing-xs);
+}
+
+.pending-badge {
+  font-size: var(--font-size-xs);
+  background-color: #ff9800;
+  color: white;
+  padding: 1px 6px;
+  border-radius: var(--border-radius-sm);
+  margin-left: var(--spacing-xs);
+  font-weight: var(--font-weight-semibold);
 }
 
 @keyframes pulse {

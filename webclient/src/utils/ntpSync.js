@@ -1,23 +1,25 @@
 /**
  * NTP Time Synchronization Utility
  * 
- * Fetches accurate time from NTP servers via HTTP API.
- * Falls back to phone time if NTP is unavailable.
+ * Fetches accurate time from public time APIs.
+ * Falls back to phone time if all servers are unavailable.
  */
 
-// Public NTP API endpoints (in order of preference)
+// Public time API endpoints (in order of preference)
+// Note: ESP32 uses 0.it.pool.ntp.org via SNTP protocol, but mobile apps need HTTP APIs
 const NTP_ENDPOINTS = [
-  'https://worldtimeapi.org/api/timezone/Europe/Rome', // Italy timezone
-  'https://worldtimeapi.org/api/ip', // Auto-detect timezone
+  'https://timeapi.io/api/Time/current/zone?timeZone=Europe/Rome', // timeapi.io - Italy timezone
+  'https://worldtimeapi.org/api/timezone/Europe/Rome', // WorldTimeAPI - Italy timezone
+  'https://worldtimeapi.org/api/ip', // WorldTimeAPI - Auto-detect timezone
 ];
 
 /**
- * Fetch current time from NTP server
- * @returns {Promise<Date>} Current time from NTP server
- * @throws {Error} If all NTP servers fail
+ * Fetch current time from time server
+ * @returns {Promise<Date>} Current time from server
+ * @throws {Error} If all time servers fail
  */
 export const fetchNTPTime = async () => {
-  console.log('[NTP] Fetching time from NTP server...');
+  console.log('[NTP] Fetching time from time server...');
   
   for (const endpoint of NTP_ENDPOINTS) {
     try {
@@ -38,7 +40,14 @@ export const fetchNTPTime = async () => {
       
       const data = await response.json();
       
-      // WorldTimeAPI returns datetime in ISO format
+      // Handle timeapi.io format
+      if (data.dateTime) {
+        const ntpTime = new Date(data.dateTime);
+        console.log(`[NTP] Time fetched successfully from ${endpoint}:`, ntpTime.toISOString());
+        return ntpTime;
+      }
+      
+      // Handle WorldTimeAPI format
       if (data.datetime) {
         const ntpTime = new Date(data.datetime);
         console.log(`[NTP] Time fetched successfully from ${endpoint}:`, ntpTime.toISOString());
@@ -52,8 +61,8 @@ export const fetchNTPTime = async () => {
     }
   }
   
-  // All NTP servers failed
-  throw new Error('All NTP servers unavailable');
+  // All time servers failed
+  throw new Error('All time servers unavailable');
 };
 
 /**

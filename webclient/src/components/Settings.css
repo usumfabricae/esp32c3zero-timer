@@ -135,6 +135,26 @@
   cursor: not-allowed;
 }
 
+.settings-button-danger {
+  background-color: #dc3545;
+}
+
+.settings-button-danger:hover:not(:disabled) {
+  background-color: #c82333;
+}
+
+.settings-active-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 8px;
+  background: #28a745;
+  color: white;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  vertical-align: middle;
+}
+
 .settings-button-icon {
   padding: 10px 12px;
   background-color: #f8f9fa;

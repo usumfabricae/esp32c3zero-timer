@@ -264,6 +264,9 @@ function App() {
       <Header 
         isConnected={ble.isConnected}
         isConnecting={ble.isConnecting}
+        connectionMethod={ble.connectionMethod}
+        lastSyncTime={ble.lastSyncTime}
+        hasPendingCommands={ble.hasPendingCommands}
         onMenuClick={handleMenuToggle}
         onConnect={handleConnect}
         onDisconnect={handleDisconnect}
@@ -283,9 +286,11 @@ function App() {
           <Settings 
             isConnected={ble.isConnected}
             wifiSsid={ble.deviceData.wifiSsid}
+            connectionMethod={ble.connectionMethod}
             onUpdateWifiSsid={ble.writeWifiSsid}
             onUpdateWifiPassword={ble.writeWifiPassword}
             onUpdateBlePasskey={ble.writeBlePasskey}
+            onConfigureIoT={ble.configureIoT}
           />
         )}
       </main>

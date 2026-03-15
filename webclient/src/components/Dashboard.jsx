@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import TemperatureDisplay from './TemperatureDisplay.jsx'
 import RelayGauge from './RelayGauge.jsx'
 import BatteryGauge from './BatteryGauge.jsx'
@@ -9,6 +9,23 @@ function Dashboard({ ble }) {
   const { deviceData, isConnected } = ble;
   const [notification, setNotification] = useState(null);
   const [isReloading, setIsReloading] = useState(false);
+  const [, forceUpdate] = useState(0);
+
+  // Update relative time display every 30 seconds
+  useEffect(() => {
+    if (!ble.lastSyncTime) return;
+    const timer = setInterval(() => forceUpdate(n => n + 1), 30000);
+    return () => clearInterval(timer);
+  }, [ble.lastSyncTime]);
+
+  const formatRelativeTime = (date) => {
+    if (!date) return '';
+    const diffSec = Math.floor((new Date() - date) / 1000);
+    if (diffSec < 60) return `${diffSec}s ago`;
+    const diffMin = Math.floor(diffSec / 60);
+    if (diffMin < 60) return `${diffMin} min ago`;
+    return `${Math.floor(diffMin / 60)}h ago`;
+  };
 
   // Get today's day of week (0 = Monday, 6 = Sunday)
   const getTodaySchedule = () => {
@@ -140,6 +157,20 @@ function Dashboard({ ble }) {
           Reload Data
         </button>
       </div>
+      {ble.connectionMethod === 'iot' && (
+        <div className="sync-info-bar">
+          {ble.lastSyncTime && (
+            <span className="sync-info-item">
+              Last sync: {formatRelativeTime(ble.lastSyncTime)}
+            </span>
+          )}
+          {ble.hasPendingCommands && (
+            <span className="sync-info-pending" title="Device will apply changes on next sync">
+              ⏳ Commands pending
+            </span>
+          )}
+        </div>
+      )}
       <div className="dashboard-grid">
         <div className="dashboard-section temperature-section">
           <TemperatureDisplay temperature={deviceData.temperature} />
