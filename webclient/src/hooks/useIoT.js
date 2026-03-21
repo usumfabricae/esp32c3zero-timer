@@ -26,6 +26,7 @@ export const useIoT = () => {
   });
   const [lastSyncTime, setLastSyncTime] = useState(null);
   const [hasPendingCommands, setHasPendingCommands] = useState(false);
+  const [sessionHasCommands, setSessionHasCommands] = useState(false);
 
   const clientRef = useRef(null);
   const pollIntervalRef = useRef(null);
@@ -62,18 +63,21 @@ export const useIoT = () => {
    * Detect pending commands by comparing reported vs desired
    */
   const checkPendingCommands = useCallback((shadow) => {
+    if (!sessionHasCommands) {
+      setHasPendingCommands(false);
+      return;
+    }
     const reported = shadow?.state?.reported;
     const desired = shadow?.state?.desired;
     if (!desired || Object.keys(desired).length === 0) {
       setHasPendingCommands(false);
       return;
     }
-    // If desired has keys that differ from reported, commands are pending
     const pending = Object.keys(desired).some(key => {
       return JSON.stringify(desired[key]) !== JSON.stringify(reported?.[key]);
     });
     setHasPendingCommands(pending);
-  }, []);
+  }, [sessionHasCommands]);
 
   /**
    * Read device shadow
@@ -87,10 +91,10 @@ export const useIoT = () => {
       const payload = JSON.parse(new TextDecoder().decode(response.payload));
 
       // Extract last sync time from metadata
-      if (payload?.metadata?.reported?.timestamp) {
-        const ts = payload.metadata.reported.timestamp;
+      const metaTimestamp = payload?.metadata?.reported?.timestamp;
+      if (metaTimestamp) {
         // Shadow metadata timestamps are Unix epoch seconds
-        setLastSyncTime(new Date(ts * 1000));
+        setLastSyncTime(new Date(metaTimestamp * 1000));
       }
 
       parseShadowState(payload?.state?.reported);
@@ -120,6 +124,7 @@ export const useIoT = () => {
       });
       await clientRef.current.send(command);
       console.log('[IoT] Shadow desired state updated');
+      setSessionHasCommands(true);
       setHasPendingCommands(true);
     } catch (err) {
       console.error('[IoT] Failed to update shadow:', err);
@@ -216,6 +221,7 @@ export const useIoT = () => {
     thingNameRef.current = null;
     setIsConnected(false);
     setHasPendingCommands(false);
+    setSessionHasCommands(false);
     setLastSyncTime(null);
     console.log('[IoT] Disconnected');
   }, []);
