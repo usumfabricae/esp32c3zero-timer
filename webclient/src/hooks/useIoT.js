@@ -33,6 +33,9 @@ export const useIoT = () => {
   const debounceTimerRef = useRef(null);
   const pendingUpdateRef = useRef(null);
   const thingNameRef = useRef(null);
+  // Tracks when the last write happened to protect optimistic updates from stale polls
+  const lastWriteTimeRef = useRef(0);
+  const WRITE_PROTECTION_MS = 3000; // Protect optimistic updates for 3s after write
 
   /**
    * Convert shadow schedule object (day names → strings) to array format
@@ -59,6 +62,9 @@ export const useIoT = () => {
     if (!reported) return;
 
     const data = {};
+    // If a write just happened, skip overwriting configurable fields until
+    // the shadow has had time to reflect the new desired state
+    const isProtected = (Date.now() - lastWriteTimeRef.current) < WRITE_PROTECTION_MS;
 
     // Temperature and battery always come from reported (read-only telemetry)
     if (reported.temperature !== undefined)
@@ -69,30 +75,31 @@ export const useIoT = () => {
       data.currentTime = new Date(reported.timestamp * 1000).toLocaleString();
 
     // For configurable fields, prefer desired over reported when a delta exists.
-    // This ensures all clients see the pending intended state.
+    // During write protection window, skip these to preserve optimistic updates.
+    if (!isProtected) {
+      // Thresholds: use desired if it has valid high/low (without old 'command' key), otherwise reported
+      if (desired?.thresholds?.high !== undefined && desired?.thresholds?.low !== undefined
+          && !desired.thresholds.command) {
+        data.thresholds = { high: desired.thresholds.high, low: desired.thresholds.low };
+      } else if (reported.thresholds) {
+        data.thresholds = { high: reported.thresholds.high, low: reported.thresholds.low };
+      }
 
-    // Thresholds: use desired if it has valid high/low (without old 'command' key), otherwise reported
-    if (desired?.thresholds?.high !== undefined && desired?.thresholds?.low !== undefined
-        && !desired.thresholds.command) {
-      data.thresholds = { high: desired.thresholds.high, low: desired.thresholds.low };
-    } else if (reported.thresholds) {
-      data.thresholds = { high: reported.thresholds.high, low: reported.thresholds.low };
-    }
+      // Override/relay state: use desired if it has valid 'active' field (not old 'command' format)
+      if (desired?.override?.active !== undefined && !desired.override.command) {
+        data.relayState = desired.override.active;
+      } else if (reported.relay_state !== undefined) {
+        data.relayState = reported.relay_state === 'H' || reported.relay_state === 'L';
+      }
 
-    // Override/relay state: use desired if it has valid 'active' field (not old 'command' format)
-    if (desired?.override?.active !== undefined && !desired.override.command) {
-      data.relayState = desired.override.active;
-    } else if (reported.relay_state !== undefined) {
-      data.relayState = reported.relay_state === 'H' || reported.relay_state === 'L';
-    }
-
-    // Schedule: merge reported with desired overrides (desired may only have some days)
-    // Skip desired schedule if it has old 'command' format
-    if (reported.schedule || desired?.schedule) {
-      const baseSchedule = reported.schedule || {};
-      const desiredSchedule = (desired?.schedule && !desired.schedule.command) ? desired.schedule : {};
-      const merged = { ...baseSchedule, ...desiredSchedule };
-      data.schedule = convertScheduleToArray(merged);
+      // Schedule: merge reported with desired overrides (desired may only have some days)
+      // Skip desired schedule if it has old 'command' format
+      if (reported.schedule || desired?.schedule) {
+        const baseSchedule = reported.schedule || {};
+        const desiredSchedule = (desired?.schedule && !desired.schedule.command) ? desired.schedule : {};
+        const merged = { ...baseSchedule, ...desiredSchedule };
+        data.schedule = convertScheduleToArray(merged);
+      }
     }
 
     if (Object.keys(data).length > 0) {
@@ -284,6 +291,7 @@ export const useIoT = () => {
   // --- BLE-compatible write operations via shadow desired state ---
 
   const writeRelayState = useCallback(async (state, durationMinutes = 60) => {
+    lastWriteTimeRef.current = Date.now();
     updateDeviceShadow({
       override: { active: !!state, duration_minutes: durationMinutes }
     });
@@ -295,6 +303,7 @@ export const useIoT = () => {
     const dayName = dayNames[day];
     if (!dayName) return;
 
+    lastWriteTimeRef.current = Date.now();
     updateDeviceShadow({
       schedule: { [dayName]: scheduleString }
     });
@@ -306,6 +315,7 @@ export const useIoT = () => {
   }, [updateDeviceShadow]);
 
   const writeTemperatureThresholds = useCallback(async (high, low) => {
+    lastWriteTimeRef.current = Date.now();
     updateDeviceShadow({
       thresholds: { high, low }
     });
