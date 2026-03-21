@@ -35,29 +35,74 @@ export const useIoT = () => {
   const thingNameRef = useRef(null);
 
   /**
-   * Parse shadow reported state into deviceData format
+   * Convert shadow schedule object (day names → strings) to array format
+   * Firmware publishes: { monday: "HHHLLL...", tuesday: "...", ... }
+   * Dashboard expects: ["HHHLLL...", "HHHLLL...", ...] (index 0=Mon, 6=Sun)
    */
-  const parseShadowState = useCallback((reported) => {
+  const convertScheduleToArray = useCallback((scheduleObj) => {
+    if (!scheduleObj) return null;
+    // If already an array, return as-is
+    if (Array.isArray(scheduleObj)) return scheduleObj;
+    const dayNames = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+    const arr = dayNames.map(day => scheduleObj[day] || 'OOOOOOOOOOOOOOOOOOOOOOOO');
+    return arr;
+  }, []);
+
+  /**
+   * Track which fields have pending desired state to avoid overwriting optimistic updates
+   */
+  const pendingFieldsRef = useRef(new Set());
+
+  /**
+   * Parse shadow reported state into deviceData format.
+   * Skips fields that have pending desired state to avoid reverting optimistic updates.
+   */
+  const parseShadowState = useCallback((reported, desired) => {
     if (!reported) return;
 
+    const pending = pendingFieldsRef.current;
     const data = {};
-    if (reported.temperature !== undefined) data.temperature = reported.temperature;
-    if (reported.battery !== undefined) data.batteryLevel = reported.battery;
-    if (reported.relay_state !== undefined) {
+
+    if (reported.temperature !== undefined && !pending.has('temperature'))
+      data.temperature = reported.temperature;
+    if (reported.battery !== undefined && !pending.has('battery'))
+      data.batteryLevel = reported.battery;
+    if (reported.relay_state !== undefined && !pending.has('relayState'))
       data.relayState = reported.relay_state === 'H' || reported.relay_state === 'L';
-    }
-    if (reported.thresholds) {
+    if (reported.thresholds && !pending.has('thresholds'))
       data.thresholds = { high: reported.thresholds.high, low: reported.thresholds.low };
-    }
-    if (reported.schedule) {
-      data.schedule = reported.schedule;
-    }
-    if (reported.timestamp) {
+    if (reported.schedule && !pending.has('schedule'))
+      data.schedule = convertScheduleToArray(reported.schedule);
+    if (reported.timestamp)
       data.currentTime = new Date(reported.timestamp * 1000).toLocaleString();
+
+    // Clear pending fields when reported matches desired (device applied the change)
+    if (desired && pending.size > 0) {
+      if (pending.has('thresholds') && reported.thresholds && desired.thresholds &&
+          reported.thresholds.high === desired.thresholds.high &&
+          reported.thresholds.low === desired.thresholds.low) {
+        pending.delete('thresholds');
+        data.thresholds = { high: reported.thresholds.high, low: reported.thresholds.low };
+      }
+      if (pending.has('relayState') && desired.override &&
+          reported.override && JSON.stringify(reported.override) === JSON.stringify(desired.override)) {
+        pending.delete('relayState');
+      }
+      if (pending.has('schedule') && reported.schedule && desired.schedule) {
+        const reportedKeys = Object.keys(desired.schedule).every(
+          k => reported.schedule[k] === desired.schedule[k]
+        );
+        if (reportedKeys) {
+          pending.delete('schedule');
+          data.schedule = convertScheduleToArray(reported.schedule);
+        }
+      }
     }
 
-    setDeviceData(prev => ({ ...prev, ...data }));
-  }, []);
+    if (Object.keys(data).length > 0) {
+      setDeviceData(prev => ({ ...prev, ...data }));
+    }
+  }, [convertScheduleToArray]);
 
   /**
    * Detect pending commands by comparing reported vs desired
@@ -97,7 +142,7 @@ export const useIoT = () => {
         setLastSyncTime(new Date(metaTimestamp * 1000));
       }
 
-      parseShadowState(payload?.state?.reported);
+      parseShadowState(payload?.state?.reported, payload?.state?.desired);
       checkPendingCommands(payload);
 
       return payload;
@@ -223,6 +268,7 @@ export const useIoT = () => {
     setHasPendingCommands(false);
     setSessionHasCommands(false);
     setLastSyncTime(null);
+    pendingFieldsRef.current.clear();
     console.log('[IoT] Disconnected');
   }, []);
 
@@ -237,19 +283,21 @@ export const useIoT = () => {
   // --- BLE-compatible write operations via shadow desired state ---
 
   const writeRelayState = useCallback(async (state, durationMinutes = 60) => {
+    pendingFieldsRef.current.add('relayState');
     updateDeviceShadow({
-      override: { command: 'override', relay_state: state ? 'H' : 'O', duration_minutes: durationMinutes }
+      override: { active: !!state, duration_minutes: durationMinutes }
     });
     setDeviceData(prev => ({ ...prev, relayState: state }));
   }, [updateDeviceShadow]);
 
   const writeSchedule = useCallback(async (day, scheduleString) => {
-    const hours = {};
-    for (let i = 0; i < 24; i++) {
-      hours[i] = scheduleString[i];
-    }
+    const dayNames = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+    const dayName = dayNames[day];
+    if (!dayName) return;
+
+    pendingFieldsRef.current.add('schedule');
     updateDeviceShadow({
-      schedule: { command: 'schedule', day, hours }
+      schedule: { [dayName]: scheduleString }
     });
     setDeviceData(prev => {
       const newSchedule = prev.schedule ? [...prev.schedule] : Array(7).fill('OOOOOOOOOOOOOOOOOOOOOOOO');
@@ -259,8 +307,9 @@ export const useIoT = () => {
   }, [updateDeviceShadow]);
 
   const writeTemperatureThresholds = useCallback(async (high, low) => {
+    pendingFieldsRef.current.add('thresholds');
     updateDeviceShadow({
-      thresholds: { command: 'thresholds', high, low }
+      thresholds: { high, low }
     });
     setDeviceData(prev => ({ ...prev, thresholds: { high, low } }));
   }, [updateDeviceShadow]);
