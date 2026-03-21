@@ -49,54 +49,50 @@ export const useIoT = () => {
   }, []);
 
   /**
-   * Track which fields have pending desired state to avoid overwriting optimistic updates
-   */
-  const pendingFieldsRef = useRef(new Set());
-
-  /**
-   * Parse shadow reported state into deviceData format.
-   * Skips fields that have pending desired state to avoid reverting optimistic updates.
+   * Parse shadow state into deviceData format.
+   * Uses desired state over reported state for pending fields so that:
+   * - Optimistic updates survive polls (same session)
+   * - Other app instances see pending changes too
+   * - Reconnect shows the latest intended state
    */
   const parseShadowState = useCallback((reported, desired) => {
     if (!reported) return;
 
-    const pending = pendingFieldsRef.current;
     const data = {};
 
-    if (reported.temperature !== undefined && !pending.has('temperature'))
+    // Temperature and battery always come from reported (read-only telemetry)
+    if (reported.temperature !== undefined)
       data.temperature = reported.temperature;
-    if (reported.battery !== undefined && !pending.has('battery'))
+    if (reported.battery !== undefined)
       data.batteryLevel = reported.battery;
-    if (reported.relay_state !== undefined && !pending.has('relayState'))
-      data.relayState = reported.relay_state === 'H' || reported.relay_state === 'L';
-    if (reported.thresholds && !pending.has('thresholds'))
-      data.thresholds = { high: reported.thresholds.high, low: reported.thresholds.low };
-    if (reported.schedule && !pending.has('schedule'))
-      data.schedule = convertScheduleToArray(reported.schedule);
     if (reported.timestamp)
       data.currentTime = new Date(reported.timestamp * 1000).toLocaleString();
 
-    // Clear pending fields when reported matches desired (device applied the change)
-    if (desired && pending.size > 0) {
-      if (pending.has('thresholds') && reported.thresholds && desired.thresholds &&
-          reported.thresholds.high === desired.thresholds.high &&
-          reported.thresholds.low === desired.thresholds.low) {
-        pending.delete('thresholds');
-        data.thresholds = { high: reported.thresholds.high, low: reported.thresholds.low };
-      }
-      if (pending.has('relayState') && desired.override &&
-          reported.override && JSON.stringify(reported.override) === JSON.stringify(desired.override)) {
-        pending.delete('relayState');
-      }
-      if (pending.has('schedule') && reported.schedule && desired.schedule) {
-        const reportedKeys = Object.keys(desired.schedule).every(
-          k => reported.schedule[k] === desired.schedule[k]
-        );
-        if (reportedKeys) {
-          pending.delete('schedule');
-          data.schedule = convertScheduleToArray(reported.schedule);
-        }
-      }
+    // For configurable fields, prefer desired over reported when a delta exists.
+    // This ensures all clients see the pending intended state.
+
+    // Thresholds: use desired if it has valid high/low (without old 'command' key), otherwise reported
+    if (desired?.thresholds?.high !== undefined && desired?.thresholds?.low !== undefined
+        && !desired.thresholds.command) {
+      data.thresholds = { high: desired.thresholds.high, low: desired.thresholds.low };
+    } else if (reported.thresholds) {
+      data.thresholds = { high: reported.thresholds.high, low: reported.thresholds.low };
+    }
+
+    // Override/relay state: use desired if it has valid 'active' field (not old 'command' format)
+    if (desired?.override?.active !== undefined && !desired.override.command) {
+      data.relayState = desired.override.active;
+    } else if (reported.relay_state !== undefined) {
+      data.relayState = reported.relay_state === 'H' || reported.relay_state === 'L';
+    }
+
+    // Schedule: merge reported with desired overrides (desired may only have some days)
+    // Skip desired schedule if it has old 'command' format
+    if (reported.schedule || desired?.schedule) {
+      const baseSchedule = reported.schedule || {};
+      const desiredSchedule = (desired?.schedule && !desired.schedule.command) ? desired.schedule : {};
+      const merged = { ...baseSchedule, ...desiredSchedule };
+      data.schedule = convertScheduleToArray(merged);
     }
 
     if (Object.keys(data).length > 0) {
@@ -178,11 +174,17 @@ export const useIoT = () => {
   }, []);
 
   /**
-   * Update device shadow desired state (debounced to max 1/second)
+   * Update device shadow desired state (debounced to max 1/second).
+   * Deep-merges 'schedule' key since days are sent individually.
    */
   const updateDeviceShadow = useCallback((desiredState) => {
-    // Merge with any pending update
-    pendingUpdateRef.current = { ...(pendingUpdateRef.current || {}), ...desiredState };
+    // Deep-merge: for 'schedule', merge day keys instead of replacing
+    const current = pendingUpdateRef.current || {};
+    const merged = { ...current, ...desiredState };
+    if (current.schedule && desiredState.schedule) {
+      merged.schedule = { ...current.schedule, ...desiredState.schedule };
+    }
+    pendingUpdateRef.current = merged;
 
     if (debounceTimerRef.current) return; // Already scheduled
 
@@ -268,7 +270,6 @@ export const useIoT = () => {
     setHasPendingCommands(false);
     setSessionHasCommands(false);
     setLastSyncTime(null);
-    pendingFieldsRef.current.clear();
     console.log('[IoT] Disconnected');
   }, []);
 
@@ -283,7 +284,6 @@ export const useIoT = () => {
   // --- BLE-compatible write operations via shadow desired state ---
 
   const writeRelayState = useCallback(async (state, durationMinutes = 60) => {
-    pendingFieldsRef.current.add('relayState');
     updateDeviceShadow({
       override: { active: !!state, duration_minutes: durationMinutes }
     });
@@ -295,7 +295,6 @@ export const useIoT = () => {
     const dayName = dayNames[day];
     if (!dayName) return;
 
-    pendingFieldsRef.current.add('schedule');
     updateDeviceShadow({
       schedule: { [dayName]: scheduleString }
     });
@@ -307,7 +306,6 @@ export const useIoT = () => {
   }, [updateDeviceShadow]);
 
   const writeTemperatureThresholds = useCallback(async (high, low) => {
-    pendingFieldsRef.current.add('thresholds');
     updateDeviceShadow({
       thresholds: { high, low }
     });
