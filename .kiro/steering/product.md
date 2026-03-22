@@ -69,6 +69,10 @@ React-based application for device control available on multiple platforms:
   - Values only revert when device confirms via reported state
   - Multiple app instances see each other's pending changes
   - No time-based race conditions
+- **Override writes include `ts` (timestamp)** to force AWS Shadow to always deliver all fields in delta
+- **Pending commands indicator** based solely on `localDesiredRef` (not shadow desired vs reported comparison)
+- **Dashboard Reload** calls `getDeviceShadow()` directly in IoT mode (read stubs return cached data)
+- **Last sync time** extracted from nested shadow metadata (`metadata.reported.timestamp.timestamp`)
 - **Optimized for Android 15:**
   - Debounced state updates (max 1/second)
   - No infinite CSS animations

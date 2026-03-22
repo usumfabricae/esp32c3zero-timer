@@ -59,7 +59,9 @@ inclusion: always
 - Logging uses module-specific TAG constants
 - `connection_manager` decides IoT vs BLE mode each wake cycle based on reachability state
 - `iot_manager` handles MQTT connect/publish/subscribe/disconnect within brief sync sessions
+- `iot_manager` delta processing: supports partial thresholds (reads current config for missing field), resilient override handling (3-tier: `active` bool, `duration_minutes` inference, legacy `command` format), always-confirm pattern (echo delta to reported even on error), pre/post-delta diagnostic dumps
 - `cert_store` manages X.509 certificates in NVS for IoT Core mTLS authentication
+- `scheduler` exposes `scheduler_save_config()` for explicit NVS persistence (set functions only update in-memory)
 
 ## Web Client Structure (webclient/)
 
@@ -121,6 +123,11 @@ webclient/
 - Debounced BLE notifications (max 1/second) for performance
 - Smart scanning synchronized with device wake times
 - Optimistic state management via localDesiredRef in useIoT.js
+- Dashboard Reload button calls `getDeviceShadow()` directly in IoT mode; read stubs return cached data
+- Override writes include `ts` timestamp to prevent AWS Shadow from stripping fields in delta
+- Override confirmation compares `reported.override` (not `reported.relay_state`)
+- Pending commands indicator based solely on `localDesiredRef` keys
+- Last sync time from nested shadow metadata path (`metadata.reported.timestamp.timestamp`)
 
 ## Architecture Patterns
 
@@ -130,6 +137,11 @@ webclient/
 - Dual-mode connection manager (IoT Core vs BLE) with automatic fallback
 - MQTT Device Shadow for cloud state synchronization
 - Delta processing: subscribe to shadow delta, apply changes, confirm via reported state
+- **Always-confirm pattern:** Echo delta fields back to reported even on processing errors (clears shadow queue)
+- **Partial delta support:** Thresholds accept only `high` or only `low` (reads current config for missing field)
+- **Resilient override handling:** 3-tier format support (active bool, duration inference, legacy command)
+- **Pre/post-delta diagnostic dumps:** Temperature, battery, relay state, schedule logged before and after delta processing
+- **NVS persistence:** `scheduler_save_config()` called explicitly after thresholds and schedule updates with error logging
 - Persistent storage with NVS (schedules, thresholds, certificates, reachability state)
 - Deep sleep for power efficiency (54s BLE mode, 300s IoT mode)
 
@@ -139,6 +151,9 @@ webclient/
 - Custom hook for IoT Core (useIoT for AWS Device Shadow communication)
 - Unified connection interface (useBLEUnified) tries IoT Core first (5s timeout), falls back to BLE
 - Optimistic state management: localDesiredRef tracks pending writes until reported confirms
+- Override writes include `ts` field; confirmation checks `reported.override` (ignoring `ts`)
+- Dashboard Reload calls `getDeviceShadow()` directly in IoT mode; read stubs return cached data
+- Pending commands based solely on `localDesiredRef` keys (not shadow desired vs reported)
 - Manual refresh only — no auto-polling or BLE notifications that overwrite UI state
 - Multi-app support: each app instance sees other apps' pending desired state
 - Component composition for UI

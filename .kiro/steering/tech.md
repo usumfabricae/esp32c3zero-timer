@@ -78,6 +78,13 @@ inclusion: always
   - Survives unlimited shadow polls without reverting
   - Multi-app: absorbs other apps' desired state from shadow
   - No time-based race conditions (replaced 3s write protection window)
+  - Pending commands indicator based solely on `localDesiredRef` (no shadow desired vs reported comparison)
+- **Override handling (useIoT.js):**
+  - Writes include `ts` (timestamp) field to force AWS Shadow to deliver all fields in delta
+  - Deactivation sends `duration_minutes: 0` so firmware can infer intent even if `active` is stripped
+  - Confirmation compares `reported.override` object (ignoring `ts`) against desired
+- **Dashboard Reload:** Calls `getDeviceShadow()` directly in IoT mode; read stubs return cached data only
+- **Last sync time:** Extracted from nested shadow metadata (`metadata.reported.timestamp.timestamp`)
 - Component-based UI (Dashboard, TimerProgramming, TemperatureSettings, Settings)
 - CSS modules for scoped styling
 - Web Bluetooth API for browser-based BLE communication
