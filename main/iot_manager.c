@@ -579,10 +579,17 @@ esp_err_t iot_manager_process_delta(void)
         int duration_minutes = 0;
         bool format_valid = false;
         
-        if (active != NULL && cJSON_IsBool(active) && 
-            duration != NULL && cJSON_IsNumber(duration)) {
+        if (active != NULL && cJSON_IsBool(active)) {
+            // Web client format: { active: bool, duration_minutes: N, ts: N }
+            // duration_minutes may be absent if AWS stripped it (use default 60)
             override_active = cJSON_IsTrue(active);
+            duration_minutes = (duration != NULL && cJSON_IsNumber(duration)) ? duration->valueint : 60;
+            format_valid = true;
+        } else if (duration != NULL && cJSON_IsNumber(duration)) {
+            // Partial delta: active was stripped by AWS because it matched reported.
+            // Infer intent from duration: >0 means activate, 0 means deactivate.
             duration_minutes = duration->valueint;
+            override_active = (duration_minutes > 0);
             format_valid = true;
         } else if (command != NULL && cJSON_IsString(command) &&
                    strcmp(command->valuestring, "override") == 0 &&

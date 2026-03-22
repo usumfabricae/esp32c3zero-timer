@@ -363,9 +363,11 @@ export const useIoT = () => {
   // --- BLE-compatible write operations via shadow desired state ---
 
   const writeRelayState = useCallback(async (state, durationMinutes = 60) => {
-    // Include a timestamp so AWS Shadow always sends ALL fields in the delta,
-    // even if active/duration_minutes haven't changed from reported.
-    const overridePayload = { active: !!state, duration_minutes: durationMinutes, ts: Date.now() };
+    // Use a single unique payload that AWS Shadow will always include fully in the delta.
+    // duration_minutes > 0 means activate, 0 means deactivate.
+    // ts ensures the entire object is always different from reported, so AWS never strips fields.
+    const effectiveDuration = state ? durationMinutes : 0;
+    const overridePayload = { active: !!state, duration_minutes: effectiveDuration, ts: Date.now() };
     localDesiredRef.current.override = overridePayload;
     updateDeviceShadow({ override: overridePayload });
     setDeviceData(prev => ({ ...prev, relayState: state }));
