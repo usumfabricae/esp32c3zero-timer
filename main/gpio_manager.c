@@ -820,6 +820,26 @@ esp_err_t gpio_reset_battery_calibration(void)
     return ESP_OK;
 }
 
+bool gpio_is_temp_calibration_active(void)
+{
+    return cal_valid;
+}
+
+uint8_t gpio_get_temp_calibration_count(void)
+{
+    return cal_point_count;
+}
+
+bool gpio_is_battery_calibration_active(void)
+{
+    return batt_cal_valid;
+}
+
+uint8_t gpio_get_battery_calibration_count(void)
+{
+    return batt_cal_point_count;
+}
+
 
 
 uint16_t gpio_read_battery_voltage(void)

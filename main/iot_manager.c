@@ -145,21 +145,40 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base,
             break;
             
         case MQTT_EVENT_DATA:
-            ESP_LOGI(TAG, "MQTT data received on topic: %.*s",
-                     event->topic_len, event->topic);
-            
-            // Check if this is a shadow delta message
-            if (strstr(event->topic, "/shadow/update/delta") != NULL) {
-                ESP_LOGI(TAG, "Shadow delta received, length: %d", event->data_len);
+            // MQTT may deliver large payloads in multiple fragments.
+            // Only the first fragment carries the topic; subsequent ones have topic == NULL.
+            if (event->topic != NULL && event->topic_len > 0) {
+                ESP_LOGI(TAG, "MQTT data received on topic: %.*s",
+                         event->topic_len, event->topic);
                 
-                // Store delta payload for processing
-                if (event->data_len < sizeof(delta_payload)) {
-                    memcpy(delta_payload, event->data, event->data_len);
-                    delta_payload[event->data_len] = '\0';
-                    delta_payload_len = event->data_len;
-                    delta_received = true;
-                } else {
-                    ESP_LOGE(TAG, "Delta payload too large: %d bytes", event->data_len);
+                // Check if this is a shadow delta message
+                if (strstr(event->topic, "/shadow/update/delta") != NULL) {
+                    ESP_LOGI(TAG, "Shadow delta received, length: %d", event->data_len);
+                    
+                    // Store delta payload for processing
+                    if (event->data_len < sizeof(delta_payload)) {
+                        memcpy(delta_payload, event->data, event->data_len);
+                        delta_payload[event->data_len] = '\0';
+                        delta_payload_len = event->data_len;
+                        delta_received = true;
+                    } else {
+                        ESP_LOGE(TAG, "Delta payload too large: %d bytes", event->data_len);
+                    }
+                }
+            } else {
+                // Continuation fragment — append to existing delta payload if one is in progress
+                if (delta_payload_len > 0 && event->data_len > 0) {
+                    size_t remaining = sizeof(delta_payload) - delta_payload_len - 1;
+                    if (event->data_len <= remaining) {
+                        memcpy(delta_payload + delta_payload_len, event->data, event->data_len);
+                        delta_payload_len += event->data_len;
+                        delta_payload[delta_payload_len] = '\0';
+                        ESP_LOGI(TAG, "Delta fragment appended, total: %d bytes", delta_payload_len);
+                    } else {
+                        ESP_LOGE(TAG, "Delta payload overflow on fragment, discarding");
+                        delta_payload_len = 0;
+                        delta_received = false;
+                    }
                 }
             }
             break;
@@ -548,37 +567,50 @@ esp_err_t iot_manager_process_delta(void)
     // Process override command
     cJSON *override = cJSON_GetObjectItem(state, "override");
     if (override != NULL && cJSON_IsObject(override)) {
+        // Support two formats:
+        // Web client format: { active: true/false, duration_minutes: N }
+        // Legacy format: { command: "override", relay_state: "H"/"L"/"O", duration_minutes: N }
         cJSON *active = cJSON_GetObjectItem(override, "active");
         cJSON *duration = cJSON_GetObjectItem(override, "duration_minutes");
+        cJSON *command = cJSON_GetObjectItem(override, "command");
+        cJSON *relay_state_json = cJSON_GetObjectItem(override, "relay_state");
+        
+        bool override_active = false;
+        int duration_minutes = 0;
+        bool format_valid = false;
         
         if (active != NULL && cJSON_IsBool(active) && 
             duration != NULL && cJSON_IsNumber(duration)) {
-            
-            bool override_active = cJSON_IsTrue(active);
-            int duration_minutes = duration->valueint;
-            
+            override_active = cJSON_IsTrue(active);
+            duration_minutes = duration->valueint;
+            format_valid = true;
+        } else if (command != NULL && cJSON_IsString(command) &&
+                   strcmp(command->valuestring, "override") == 0 &&
+                   relay_state_json != NULL && cJSON_IsString(relay_state_json)) {
+            const char *rs = relay_state_json->valuestring;
+            override_active = (strcmp(rs, "H") == 0 || strcmp(rs, "L") == 0);
+            duration_minutes = (duration != NULL && cJSON_IsNumber(duration)) ? duration->valueint : 60;
+            format_valid = true;
+        }
+        
+        if (format_valid) {
             ESP_LOGI(TAG, "Delta: override active=%d, duration=%d minutes", 
                      override_active, duration_minutes);
             
             if (override_active && duration_minutes > 0) {
-                // Activate manual override
                 gpio_set_relay_manual(1, duration_minutes);
                 ESP_LOGI(TAG, "Manual override activated for %d minutes", duration_minutes);
             } else {
-                // Clear manual override
                 gpio_clear_manual_override();
                 ESP_LOGI(TAG, "Manual override cleared");
             }
-            
-            // Add to confirmation
-            cJSON *override_confirm = cJSON_CreateObject();
-            cJSON_AddBoolToObject(override_confirm, "active", override_active);
-            cJSON_AddNumberToObject(override_confirm, "duration_minutes", duration_minutes);
-            cJSON_AddItemToObject(confirmation_reported, "override", override_confirm);
-            updated = true;
         } else {
-            ESP_LOGW(TAG, "Invalid override format in delta");
+            ESP_LOGW(TAG, "Unrecognized override format in delta, confirming to clear");
         }
+        
+        // Always confirm override to clear delta
+        cJSON_AddItemToObject(confirmation_reported, "override", cJSON_Duplicate(override, true));
+        updated = true;
     }
     
     // Process threshold update
@@ -587,31 +619,44 @@ esp_err_t iot_manager_process_delta(void)
         cJSON *high = cJSON_GetObjectItem(thresholds, "high");
         cJSON *low = cJSON_GetObjectItem(thresholds, "low");
         
-        if (high != NULL && cJSON_IsNumber(high) && 
-            low != NULL && cJSON_IsNumber(low)) {
-            
-            float high_temp = (float)high->valuedouble;
-            float low_temp = (float)low->valuedouble;
-            
+        // Support partial updates: if only high or only low is present,
+        // read the missing value from current config
+        scheduler_config_t cur_config;
+        scheduler_get_config(&cur_config);
+        
+        float high_temp = (float)cur_config.high_temp;
+        float low_temp = (float)cur_config.low_temp;
+        bool has_update = false;
+        
+        if (high != NULL && cJSON_IsNumber(high)) {
+            high_temp = (float)high->valuedouble;
+            has_update = true;
+        }
+        if (low != NULL && cJSON_IsNumber(low)) {
+            low_temp = (float)low->valuedouble;
+            has_update = true;
+        }
+        
+        if (has_update) {
             ESP_LOGI(TAG, "Delta: thresholds high=%.1f, low=%.1f", high_temp, low_temp);
             
-            // Update thresholds via scheduler
             esp_err_t ret = scheduler_set_temperatures((int16_t)high_temp, (int16_t)low_temp);
             if (ret == ESP_OK) {
                 ESP_LOGI(TAG, "Temperature thresholds updated");
-                
-                // Add to confirmation
-                cJSON *thresholds_confirm = cJSON_CreateObject();
-                cJSON_AddNumberToObject(thresholds_confirm, "high", high_temp);
-                cJSON_AddNumberToObject(thresholds_confirm, "low", low_temp);
-                cJSON_AddItemToObject(confirmation_reported, "thresholds", thresholds_confirm);
-                updated = true;
+                ret = scheduler_save_config();
+                if (ret != ESP_OK) {
+                    ESP_LOGE(TAG, "Failed to save thresholds to NVS (err=%s)", esp_err_to_name(ret));
+                }
             } else {
-                ESP_LOGE(TAG, "Failed to update temperature thresholds");
+                ESP_LOGE(TAG, "Failed to update temperature thresholds (err=%s)", esp_err_to_name(ret));
             }
         } else {
-            ESP_LOGW(TAG, "Invalid thresholds format in delta");
+            ESP_LOGW(TAG, "Thresholds delta has no high or low values, confirming to clear");
         }
+        
+        // Always confirm thresholds to clear delta
+        cJSON_AddItemToObject(confirmation_reported, "thresholds", cJSON_Duplicate(thresholds, true));
+        updated = true;
     }
     
     // Process schedule update
@@ -619,8 +664,6 @@ esp_err_t iot_manager_process_delta(void)
     if (schedule != NULL && cJSON_IsObject(schedule)) {
         const char *day_names[] = {"monday", "tuesday", "wednesday", "thursday", 
                                    "friday", "saturday", "sunday"};
-        cJSON *schedule_confirm = cJSON_CreateObject();
-        bool schedule_updated = false;
         
         for (int i = 0; i < 7; i++) {
             cJSON *day_schedule = cJSON_GetObjectItem(schedule, day_names[i]);
@@ -629,24 +672,24 @@ esp_err_t iot_manager_process_delta(void)
                 
                 ESP_LOGI(TAG, "Delta: schedule %s=%s", day_names[i], schedule_str);
                 
-                // Update schedule via scheduler
                 esp_err_t ret = scheduler_set_day_schedule(i, schedule_str);
                 if (ret == ESP_OK) {
-                    cJSON_AddStringToObject(schedule_confirm, day_names[i], schedule_str);
-                    schedule_updated = true;
+                    ESP_LOGI(TAG, "Schedule %s updated", day_names[i]);
                 } else {
-                    ESP_LOGE(TAG, "Failed to update schedule for %s", day_names[i]);
+                    ESP_LOGE(TAG, "Failed to update schedule for %s (err=%s)", day_names[i], esp_err_to_name(ret));
                 }
             }
         }
         
-        if (schedule_updated) {
-            ESP_LOGI(TAG, "Schedule updated");
-            cJSON_AddItemToObject(confirmation_reported, "schedule", schedule_confirm);
-            updated = true;
-        } else {
-            cJSON_Delete(schedule_confirm);
+        // Save schedule changes to NVS
+        esp_err_t save_ret = scheduler_save_config();
+        if (save_ret != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to save schedule to NVS (err=%s)", esp_err_to_name(save_ret));
         }
+        
+        // Always confirm schedule to clear delta
+        cJSON_AddItemToObject(confirmation_reported, "schedule", cJSON_Duplicate(schedule, true));
+        updated = true;
     }
     
     // Process calibration update
@@ -654,9 +697,55 @@ esp_err_t iot_manager_process_delta(void)
     if (calibration != NULL && cJSON_IsObject(calibration)) {
         ESP_LOGI(TAG, "Delta: calibration update received");
         
-        // Note: Calibration updates would require more complex handling
-        // For now, just log that we received it
-        ESP_LOGW(TAG, "Calibration updates not yet implemented");
+        // Handle temperature calibration (temp_point field present)
+        cJSON *temp_point = cJSON_GetObjectItem(calibration, "temp_point");
+        if (temp_point != NULL && cJSON_IsNumber(temp_point)) {
+            int16_t actual_temp = (int16_t)temp_point->valueint;
+            
+            if (actual_temp == -999) {
+                if (gpio_reset_temperature_calibration() == ESP_OK) {
+                    ESP_LOGI(TAG, "Temperature calibration reset to factory defaults");
+                } else {
+                    ESP_LOGE(TAG, "Temperature calibration reset failed");
+                }
+            } else {
+                if (gpio_calibrate_temperature(actual_temp) == ESP_OK) {
+                    ESP_LOGI(TAG, "Temperature calibration point added: %d°C", actual_temp);
+                } else {
+                    ESP_LOGE(TAG, "Temperature calibration failed");
+                }
+            }
+        }
+        
+        // Handle battery calibration (battery_point field present)
+        cJSON *battery_point = cJSON_GetObjectItem(calibration, "battery_point");
+        if (battery_point != NULL && cJSON_IsNumber(battery_point)) {
+            uint16_t actual_voltage_mv = (uint16_t)battery_point->valueint;
+            
+            if (actual_voltage_mv == 65535) {
+                if (gpio_reset_battery_calibration() == ESP_OK) {
+                    ESP_LOGI(TAG, "Battery calibration reset to factory defaults");
+                } else {
+                    ESP_LOGE(TAG, "Battery calibration reset failed");
+                }
+            } else if (actual_voltage_mv >= 2500 && actual_voltage_mv <= 5000) {
+                if (gpio_calibrate_battery_voltage(actual_voltage_mv) == ESP_OK) {
+                    ESP_LOGI(TAG, "Battery calibration point added: %dmV", actual_voltage_mv);
+                } else {
+                    ESP_LOGE(TAG, "Battery calibration failed");
+                }
+            } else {
+                ESP_LOGW(TAG, "Invalid battery voltage: %dmV (must be 2500-5000mV or 65535 for reset)", actual_voltage_mv);
+            }
+        }
+        
+        if (temp_point == NULL && battery_point == NULL) {
+            ESP_LOGW(TAG, "Calibration delta has no temp_point or battery_point, confirming to clear");
+        }
+        
+        // Always confirm calibration to clear delta
+        cJSON_AddItemToObject(confirmation_reported, "calibration", cJSON_Duplicate(calibration, true));
+        updated = true;
     }
     
     // Cleanup delta JSON
@@ -691,6 +780,52 @@ esp_err_t iot_manager_process_delta(void)
     // Clear delta flag for next sync session
     delta_received = false;
     delta_payload_len = 0;
+    
+    // === Post-delta diagnostic dump ===
+    if (updated) {
+        ESP_LOGI(TAG, "===== IoT POST-DELTA STATUS =====");
+        
+        int16_t new_temp = gpio_read_temperature();
+        if (gpio_is_temp_calibration_active()) {
+            ESP_LOGI(TAG, "Temperature: %d°C (custom calibration, %d points)",
+                     new_temp, gpio_get_temp_calibration_count());
+        } else {
+            ESP_LOGI(TAG, "Temperature: %d°C (default calibration)", new_temp);
+        }
+        
+        uint16_t new_batt_voltage = gpio_read_battery_voltage();
+        uint8_t new_batt_pct = gpio_get_battery_percentage();
+        if (gpio_is_battery_calibration_active()) {
+            ESP_LOGI(TAG, "Battery: %d%% (%dmV, custom calibration, %d points)",
+                     new_batt_pct, new_batt_voltage, gpio_get_battery_calibration_count());
+        } else {
+            ESP_LOGI(TAG, "Battery: %d%% (%dmV, default calibration)",
+                     new_batt_pct, new_batt_voltage);
+        }
+        
+        if (gpio_is_manual_override_active()) {
+            time_t override_end = gpio_get_manual_override_endtime();
+            time_t now_t = time(NULL);
+            int remaining_sec = (int)(override_end - now_t);
+            ESP_LOGI(TAG, "Relay: %c (MANUAL OVERRIDE, ends in %dm %ds)",
+                     gpio_get_relay() ? 'H' : 'L', remaining_sec / 60, remaining_sec % 60);
+        } else {
+            char new_mode = scheduler_get_current_mode();
+            scheduler_config_t new_config;
+            scheduler_get_config(&new_config);
+            ESP_LOGI(TAG, "Relay: %c (auto, schedule mode: %c, thresholds: H=%d L=%d)",
+                     gpio_get_relay() ? 'H' : 'L', new_mode, new_config.high_temp, new_config.low_temp);
+        }
+        
+        scheduler_config_t post_config;
+        scheduler_get_config(&post_config);
+        const char *day_labels_post[] = {"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"};
+        for (int i = 0; i < 7; i++) {
+            ESP_LOGI(TAG, "Schedule %s: %s", day_labels_post[i], post_config.schedule[i]);
+        }
+        
+        ESP_LOGI(TAG, "=================================");
+    }
     
     return ESP_OK;
 }
@@ -817,7 +952,50 @@ esp_err_t iot_manager_sync_session(void)
     device_state.calibration.temp_count = 0;
     device_state.calibration.battery_count = 0;
     
-    // Publish device state to shadow
+    // === IoT Sync Diagnostic Dump ===
+    ESP_LOGI(TAG, "========== IoT SYNC STATUS ==========");
+    
+    // Temperature with calibration info
+    if (gpio_is_temp_calibration_active()) {
+        ESP_LOGI(TAG, "Temperature: %d°C (custom calibration, %d points)",
+                 (int)device_state.temperature, gpio_get_temp_calibration_count());
+    } else {
+        ESP_LOGI(TAG, "Temperature: %d°C (default calibration)",
+                 (int)device_state.temperature);
+    }
+    
+    // Battery with calibration info
+    uint16_t battery_voltage = gpio_read_battery_voltage();
+    if (gpio_is_battery_calibration_active()) {
+        ESP_LOGI(TAG, "Battery: %d%% (%dmV, custom calibration, %d points)",
+                 device_state.battery, battery_voltage, gpio_get_battery_calibration_count());
+    } else {
+        ESP_LOGI(TAG, "Battery: %d%% (%dmV, default calibration)",
+                 device_state.battery, battery_voltage);
+    }
+    
+    // Relay status with override info
+    if (gpio_is_manual_override_active()) {
+        time_t override_end = gpio_get_manual_override_endtime();
+        time_t now_t = time(NULL);
+        int remaining_sec = (int)(override_end - now_t);
+        ESP_LOGI(TAG, "Relay: %c (MANUAL OVERRIDE, ends in %dm %ds)",
+                 device_state.relay_state, remaining_sec / 60, remaining_sec % 60);
+    } else {
+        ESP_LOGI(TAG, "Relay: %c (auto, schedule mode: %c, thresholds: H=%d L=%d)",
+                 device_state.relay_state, device_state.schedule_mode,
+                 (int)device_state.thresholds.high, (int)device_state.thresholds.low);
+    }
+    
+    // Weekly schedule
+    const char *day_labels[] = {"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"};
+    for (int i = 0; i < 7; i++) {
+        ESP_LOGI(TAG, "Schedule %s: %s", day_labels[i], device_state.schedule[i]);
+    }
+    
+    ESP_LOGI(TAG, "======================================");
+    
+    // Publish device state to shadow (triggers delta if desired != reported)
     ret = iot_manager_publish_state(&device_state);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to publish device state to shadow");
@@ -835,7 +1013,7 @@ esp_err_t iot_manager_sync_session(void)
         // Just log and continue
     }
     
-    // Process shadow delta updates
+    // Process shadow delta updates (delta arrives in response to state publish above)
     ret = iot_manager_process_delta();
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to process shadow delta");
