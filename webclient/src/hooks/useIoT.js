@@ -137,6 +137,7 @@ export const useIoT = () => {
     const desiredOverride = effectiveDesired.override;
     if (desiredOverride?.active !== undefined) {
       const reportedOverride = reported.override;
+      // Compare only active + duration_minutes (ignore ts which is always unique)
       if (reportedOverride && isConfirmed(
         { active: reportedOverride.active, duration_minutes: reportedOverride.duration_minutes },
         { active: desiredOverride.active, duration_minutes: desiredOverride.duration_minutes }
@@ -362,11 +363,11 @@ export const useIoT = () => {
   // --- BLE-compatible write operations via shadow desired state ---
 
   const writeRelayState = useCallback(async (state, durationMinutes = 60) => {
-    // Store in local desired so polls won't overwrite until reported confirms
-    localDesiredRef.current.override = { active: !!state, duration_minutes: durationMinutes };
-    updateDeviceShadow({
-      override: { active: !!state, duration_minutes: durationMinutes }
-    });
+    // Include a timestamp so AWS Shadow always sends ALL fields in the delta,
+    // even if active/duration_minutes haven't changed from reported.
+    const overridePayload = { active: !!state, duration_minutes: durationMinutes, ts: Date.now() };
+    localDesiredRef.current.override = overridePayload;
+    updateDeviceShadow({ override: overridePayload });
     setDeviceData(prev => ({ ...prev, relayState: state }));
   }, [updateDeviceShadow]);
 
