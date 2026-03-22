@@ -1218,12 +1218,8 @@ esp_err_t ble_server_init(void)
         ESP_LOGW(GATTS_TAG, "Scheduler init warning: %s", esp_err_to_name(ret));
     }
 
-    // Initialize all GPIOs
-    ret = gpio_manager_init();
-    if (ret != ESP_OK) {
-        ESP_LOGE(GATTS_TAG, "GPIO manager init failed: %s", esp_err_to_name(ret));
-        return ret;
-    }
+    // GPIO manager already initialized in main.c boot sequence
+    // No need to initialize again here
 
     ESP_ERROR_CHECK(esp_bt_controller_mem_release(ESP_BT_MODE_CLASSIC_BT));
 

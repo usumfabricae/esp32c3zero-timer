@@ -26,16 +26,15 @@ export const useIoT = () => {
   });
   const [lastSyncTime, setLastSyncTime] = useState(null);
   const [hasPendingCommands, setHasPendingCommands] = useState(false);
-  const [sessionHasCommands, setSessionHasCommands] = useState(false);
 
   const clientRef = useRef(null);
   const pollIntervalRef = useRef(null);
   const debounceTimerRef = useRef(null);
   const pendingUpdateRef = useRef(null);
   const thingNameRef = useRef(null);
-  // Tracks when the last write happened to protect optimistic updates from stale polls
-  const lastWriteTimeRef = useRef(0);
-  const WRITE_PROTECTION_MS = 3000; // Protect optimistic updates for 3s after write
+  // Local pending desired state: tracks what we've written (or seen in desired)
+  // until reported confirms the values. This survives polls and shadow clears.
+  const localDesiredRef = useRef({});
 
   /**
    * Convert shadow schedule object (day names → strings) to array format
@@ -52,21 +51,59 @@ export const useIoT = () => {
   }, []);
 
   /**
+   * Check if a local desired value has been confirmed by reported state.
+   * Returns true if reported matches the desired value (device applied it).
+   */
+  const isConfirmed = useCallback((reportedVal, desiredVal) => {
+    return JSON.stringify(reportedVal) === JSON.stringify(desiredVal);
+  }, []);
+
+  /**
+   * Merge local desired state with shadow desired state.
+   * Shadow desired may have been set by another app instance.
+   * Local desired tracks our own writes. We keep whichever is newer
+   * (local wins for keys we wrote, shadow wins for keys we didn't).
+   */
+  const mergeDesired = useCallback((shadowDesired) => {
+    if (!shadowDesired) return localDesiredRef.current;
+    const merged = { ...localDesiredRef.current };
+
+    // Absorb shadow desired keys we don't have locally (from other apps)
+    if (shadowDesired.thresholds?.high !== undefined && shadowDesired.thresholds?.low !== undefined
+        && !shadowDesired.thresholds.command && !merged.thresholds) {
+      merged.thresholds = { high: shadowDesired.thresholds.high, low: shadowDesired.thresholds.low };
+    }
+    if (shadowDesired.override?.active !== undefined && !shadowDesired.override.command && !merged.override) {
+      merged.override = shadowDesired.override;
+    }
+    if (shadowDesired.schedule && !shadowDesired.schedule.command) {
+      // Merge schedule day-by-day: local wins per-day, shadow fills gaps
+      merged.schedule = { ...(shadowDesired.schedule || {}), ...(merged.schedule || {}) };
+    }
+
+    return merged;
+  }, []);
+
+  /**
    * Parse shadow state into deviceData format.
-   * Uses desired state over reported state for pending fields so that:
-   * - Optimistic updates survive polls (same session)
-   * - Other app instances see pending changes too
-   * - Reconnect shows the latest intended state
+   *
+   * Strategy: for every configurable field, the effective value shown in the UI
+   * is determined by this priority chain:
+   *   1. localDesired (our own writes, not yet confirmed by reported)
+   *   2. shadow desired (another app's writes, not yet confirmed)
+   *   3. reported (device's confirmed state)
+   *
+   * A localDesired entry is cleared once reported confirms it (values match).
+   * This means the UI never reverts to stale reported data while a command is
+   * pending, regardless of how many polls happen or whether AWS clears desired.
    */
   const parseShadowState = useCallback((reported, desired) => {
     if (!reported) return;
 
     const data = {};
-    // If a write just happened, skip overwriting configurable fields until
-    // the shadow has had time to reflect the new desired state
-    const isProtected = (Date.now() - lastWriteTimeRef.current) < WRITE_PROTECTION_MS;
+    const effectiveDesired = mergeDesired(desired);
 
-    // Temperature and battery always come from reported (read-only telemetry)
+    // --- Read-only telemetry: always from reported ---
     if (reported.temperature !== undefined)
       data.temperature = reported.temperature;
     if (reported.battery !== undefined)
@@ -74,47 +111,90 @@ export const useIoT = () => {
     if (reported.timestamp)
       data.currentTime = new Date(reported.timestamp * 1000).toLocaleString();
 
-    // For configurable fields, prefer desired over reported when a delta exists.
-    // During write protection window, skip these to preserve optimistic updates.
-    if (!isProtected) {
-      // Thresholds: use desired if it has valid high/low (without old 'command' key), otherwise reported
-      if (desired?.thresholds?.high !== undefined && desired?.thresholds?.low !== undefined
-          && !desired.thresholds.command) {
-        data.thresholds = { high: desired.thresholds.high, low: desired.thresholds.low };
-      } else if (reported.thresholds) {
-        data.thresholds = { high: reported.thresholds.high, low: reported.thresholds.low };
+    // --- Thresholds ---
+    const desiredThresholds = effectiveDesired.thresholds;
+    const reportedThresholds = reported.thresholds;
+    if (desiredThresholds?.high !== undefined && desiredThresholds?.low !== undefined) {
+      // Check if reported has caught up
+      if (reportedThresholds && isConfirmed(
+        { high: reportedThresholds.high, low: reportedThresholds.low },
+        { high: desiredThresholds.high, low: desiredThresholds.low }
+      )) {
+        // Confirmed — clear local desired for thresholds
+        delete localDesiredRef.current.thresholds;
+        data.thresholds = { high: reportedThresholds.high, low: reportedThresholds.low };
+      } else {
+        // Still pending — show desired values
+        data.thresholds = { high: desiredThresholds.high, low: desiredThresholds.low };
+      }
+    } else if (reportedThresholds) {
+      data.thresholds = { high: reportedThresholds.high, low: reportedThresholds.low };
+    }
+
+    // --- Override / relay state ---
+    const desiredOverride = effectiveDesired.override;
+    if (desiredOverride?.active !== undefined) {
+      if (reported.relay_state !== undefined) {
+        const reportedBool = reported.relay_state === 'H' || reported.relay_state === 'L';
+        if (reportedBool === desiredOverride.active) {
+          delete localDesiredRef.current.override;
+          data.relayState = reportedBool;
+        } else {
+          data.relayState = desiredOverride.active;
+        }
+      } else {
+        data.relayState = desiredOverride.active;
+      }
+    } else if (reported.relay_state !== undefined) {
+      data.relayState = reported.relay_state === 'H' || reported.relay_state === 'L';
+    }
+
+    // --- Schedule ---
+    const desiredSchedule = effectiveDesired.schedule;
+    const reportedSchedule = reported.schedule || {};
+    if (desiredSchedule && Object.keys(desiredSchedule).length > 0) {
+      const dayNames = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+      const mergedSchedule = { ...reportedSchedule };
+      let allConfirmed = true;
+
+      for (const day of dayNames) {
+        if (desiredSchedule[day] !== undefined) {
+          if (reportedSchedule[day] === desiredSchedule[day]) {
+            // This day is confirmed
+          } else {
+            allConfirmed = false;
+            mergedSchedule[day] = desiredSchedule[day];
+          }
+        }
       }
 
-      // Override/relay state: use desired if it has valid 'active' field (not old 'command' format)
-      if (desired?.override?.active !== undefined && !desired.override.command) {
-        data.relayState = desired.override.active;
-      } else if (reported.relay_state !== undefined) {
-        data.relayState = reported.relay_state === 'H' || reported.relay_state === 'L';
+      if (allConfirmed) {
+        delete localDesiredRef.current.schedule;
       }
 
-      // Schedule: merge reported with desired overrides (desired may only have some days)
-      // Skip desired schedule if it has old 'command' format
-      if (reported.schedule || desired?.schedule) {
-        const baseSchedule = reported.schedule || {};
-        const desiredSchedule = (desired?.schedule && !desired.schedule.command) ? desired.schedule : {};
-        const merged = { ...baseSchedule, ...desiredSchedule };
-        data.schedule = convertScheduleToArray(merged);
-      }
+      data.schedule = convertScheduleToArray(mergedSchedule);
+    } else if (Object.keys(reportedSchedule).length > 0) {
+      data.schedule = convertScheduleToArray(reportedSchedule);
     }
 
     if (Object.keys(data).length > 0) {
       setDeviceData(prev => ({ ...prev, ...data }));
     }
-  }, [convertScheduleToArray]);
+  }, [convertScheduleToArray, mergeDesired, isConfirmed]);
 
   /**
-   * Detect pending commands by comparing reported vs desired
+   * Detect pending commands by checking local desired state and shadow desired.
+   * Commands are pending if localDesiredRef has any keys (not yet confirmed)
+   * or if shadow desired differs from reported.
    */
   const checkPendingCommands = useCallback((shadow) => {
-    if (!sessionHasCommands) {
-      setHasPendingCommands(false);
+    // Local desired entries that haven't been confirmed yet
+    const hasLocalPending = Object.keys(localDesiredRef.current).length > 0;
+    if (hasLocalPending) {
+      setHasPendingCommands(true);
       return;
     }
+
     const reported = shadow?.state?.reported;
     const desired = shadow?.state?.desired;
     if (!desired || Object.keys(desired).length === 0) {
@@ -125,7 +205,7 @@ export const useIoT = () => {
       return JSON.stringify(desired[key]) !== JSON.stringify(reported?.[key]);
     });
     setHasPendingCommands(pending);
-  }, [sessionHasCommands]);
+  }, []);
 
   /**
    * Read device shadow
@@ -172,7 +252,6 @@ export const useIoT = () => {
       });
       await clientRef.current.send(command);
       console.log('[IoT] Shadow desired state updated');
-      setSessionHasCommands(true);
       setHasPendingCommands(true);
     } catch (err) {
       console.error('[IoT] Failed to update shadow:', err);
@@ -273,9 +352,9 @@ export const useIoT = () => {
     }
     clientRef.current = null;
     thingNameRef.current = null;
+    localDesiredRef.current = {};
     setIsConnected(false);
     setHasPendingCommands(false);
-    setSessionHasCommands(false);
     setLastSyncTime(null);
     console.log('[IoT] Disconnected');
   }, []);
@@ -291,7 +370,8 @@ export const useIoT = () => {
   // --- BLE-compatible write operations via shadow desired state ---
 
   const writeRelayState = useCallback(async (state, durationMinutes = 60) => {
-    lastWriteTimeRef.current = Date.now();
+    // Store in local desired so polls won't overwrite until reported confirms
+    localDesiredRef.current.override = { active: !!state, duration_minutes: durationMinutes };
     updateDeviceShadow({
       override: { active: !!state, duration_minutes: durationMinutes }
     });
@@ -303,7 +383,11 @@ export const useIoT = () => {
     const dayName = dayNames[day];
     if (!dayName) return;
 
-    lastWriteTimeRef.current = Date.now();
+    // Merge into local desired schedule (day-by-day)
+    localDesiredRef.current.schedule = {
+      ...(localDesiredRef.current.schedule || {}),
+      [dayName]: scheduleString
+    };
     updateDeviceShadow({
       schedule: { [dayName]: scheduleString }
     });
@@ -315,7 +399,8 @@ export const useIoT = () => {
   }, [updateDeviceShadow]);
 
   const writeTemperatureThresholds = useCallback(async (high, low) => {
-    lastWriteTimeRef.current = Date.now();
+    // Store in local desired so polls won't overwrite until reported confirms
+    localDesiredRef.current.thresholds = { high, low };
     updateDeviceShadow({
       thresholds: { high, low }
     });

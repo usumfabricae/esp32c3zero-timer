@@ -263,4 +263,75 @@
  */
 #define LED_BRIGHTNESS 10
 
+// ============================================================================
+// AWS IOT CORE CONFIGURATION
+// ============================================================================
+
+/**
+ * Enable AWS IoT Core cloud connectivity
+ * Set to 1 to enable IoT Core integration, 0 for BLE-only mode
+ * When enabled, device will connect to AWS IoT Core for remote management
+ * When disabled or credentials missing, device operates in BLE-only mode
+ */
+#define IOT_CORE_ENABLED 1
+
+/**
+ * AWS IoT Core endpoint URL
+ * Format: xxxxx-ats.iot.region.amazonaws.com
+ * Find your endpoint in AWS IoT Core console under Settings
+ * Example: "a1b2c3d4e5f6g7-ats.iot.us-east-1.amazonaws.com"
+ * 
+ * IMPORTANT: Replace this with your actual IoT Core endpoint
+ */
+#define IOT_ENDPOINT "your-endpoint-ats.iot.your-region.amazonaws.com"
+
+/**
+ * AWS IoT Core MQTT port
+ * Standard port for MQTT over TLS: 8883
+ * Alternative ports: 443 (HTTPS), 8443 (WebSocket)
+ * Recommended: 8883
+ */
+#define IOT_MQTT_PORT 8883
+
+/**
+ * MQTT keep-alive interval in seconds
+ * How often to send MQTT ping to maintain connection
+ * Recommended: 60 seconds
+ */
+#define IOT_KEEP_ALIVE_SEC 60
+
+/**
+ * IoT Core connection timeout in seconds
+ * Maximum time to wait for MQTT connection establishment
+ * If connection fails after this timeout, device switches to BLE mode
+ * Recommended: 10 seconds (fail-fast for power efficiency)
+ */
+#define IOT_CONNECTION_TIMEOUT_SEC 10
+
+/**
+ * IoT Core synchronization session timeout in seconds
+ * Maximum duration for complete sync session (connect, publish, receive, disconnect)
+ * If sync exceeds this timeout, session is aborted and device switches to BLE mode
+ * Recommended: 30 seconds (minimize WiFi on-time)
+ */
+#define IOT_SYNC_TIMEOUT_SEC 30
+
+/**
+ * Deep sleep duration for IoT mode in seconds
+ * How long device sleeps between IoT Core sync sessions
+ * Longer sleep = less frequent syncs = lower average power consumption
+ * Recommended: 300 seconds (5 minutes)
+ * 
+ * Power optimization: WiFi consumes more power than BLE, so we connect
+ * less frequently (5 min vs 1 min) but for very brief periods (5-30s)
+ */
+#define IOT_DEEP_SLEEP_DURATION_SEC 300  // 5 minutes
+
+/**
+ * IoT Core retry interval in BLE mode (seconds)
+ * When in BLE mode due to IoT Core unreachability, how often to retry IoT connection
+ * Recommended: 3600 seconds (1 hour)
+ */
+#define IOT_RETRY_INTERVAL_SEC 3600  // 1 hour
+
 #endif // CONFIG_H
