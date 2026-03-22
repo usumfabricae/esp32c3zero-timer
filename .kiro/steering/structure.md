@@ -20,9 +20,15 @@ inclusion: always
 ├── deploy.ps1              # Flash and monitor script
 ├── restart.ps1             # Device restart script
 ├── trace.ps1               # Trace logging script
+├── check-aws-iot-config.sh # AWS IoT Core configuration checker
+├── esp32timer-policy-corrected.json # AWS IoT policy template
 ├── README.md               # Main documentation
-├── BLE_SECURITY.md         # BLE security implementation guide
-└── SCHEDULER.md            # Scheduler system documentation
+├── README-IOTCORE.md       # AWS IoT Core integration guide
+├── SCHEDULER.md            # Scheduler system documentation
+├── BATTERY_CALIBRATION.md  # Battery calibration documentation
+├── NEXT-STEPS-IOT.md       # IoT integration roadmap
+├── QUICK-IOT-TEST.md       # Quick IoT testing guide
+└── CODEMAGIC_SETUP.md      # CI/CD setup guide
 ```
 
 ## Firmware Structure (main/)
@@ -33,10 +39,15 @@ inclusion: always
 
 ### Functional Modules
 - `config.h` - Centralized configuration file with all user-configurable parameters
+- `config.h.example` - Example configuration template (without secrets)
 - `ble_server.c/h` - BLE GATT server, characteristics, pairing
 - `wifi_manager.c/h` - WiFi connection, NTP sync, time management
 - `gpio_manager.c/h` - GPIO control, relay switching, temperature reading, battery monitoring
 - `scheduler.c/h` - Weekly schedule logic, temperature-based control
+- `connection_manager.c/h` - Dual-mode connection orchestration (IoT Core vs BLE)
+- `iot_manager.c/h` - AWS IoT Core MQTT client, Device Shadow sync, delta processing
+- `cert_store.c/h` - NVS-based X.509 certificate storage for IoT Core authentication
+- `provision_certs.h` - Certificate provisioning helpers
 - `led_status.c/h` - RGB LED status indicators
 - `led_strip_encoder.c/h` - WS2812 LED driver (RMT-based)
 
@@ -46,6 +57,9 @@ inclusion: always
 - Static functions for internal implementation
 - NVS storage handled within each module for its own data
 - Logging uses module-specific TAG constants
+- `connection_manager` decides IoT vs BLE mode each wake cycle based on reachability state
+- `iot_manager` handles MQTT connect/publish/subscribe/disconnect within brief sync sessions
+- `cert_store` manages X.509 certificates in NVS for IoT Core mTLS authentication
 
 ## Web Client Structure (webclient/)
 
@@ -63,62 +77,70 @@ webclient/
 │   │   ├── RelayGauge.jsx/css
 │   │   ├── BatteryGauge.jsx/css
 │   │   ├── Notification.jsx/css
+│   │   ├── Settings.jsx/css    # IoT Core connection settings
+│   │   ├── PWAInstallPrompt.jsx/css
 │   │   └── RawBLETest.jsx
 │   ├── hooks/
 │   │   ├── useBLE.js           # Web Bluetooth API hook
 │   │   ├── useBLECapacitor.js  # Capacitor BLE hook
-│   │   └── useBLEUnified.js    # Platform detection & unified interface
+│   │   ├── useBLEUnified.js    # Platform detection & unified interface (IoT first, BLE fallback)
+│   │   └── useIoT.js           # AWS IoT Core Device Shadow hook
 │   ├── utils/
-│   │   └── dataFormatter.js # Data conversion utilities
+│   │   └── dataFormatter.js    # Data conversion utilities
 │   ├── styles/
-│   │   └── global.css      # Global styles
-│   ├── App.jsx/css         # Main app component
-│   └── main.jsx            # React entry point
-├── android/                # Capacitor Android project
+│   │   └── global.css          # Global styles
+│   ├── App.jsx/css             # Main app component
+│   └── main.jsx                # React entry point
+├── android/                    # Capacitor Android project
 │   ├── app/
-│   │   ├── build.gradle    # Android build configuration
-│   │   └── src/main/       # Android app source
-│   ├── build.gradle        # Root Android build config
-│   ├── gradle.properties   # Gradle properties
-│   └── variables.gradle    # Android SDK versions
-├── dist/                   # Production build output
-├── node_modules/           # Dependencies
-├── index.html              # HTML template
-├── vite.config.js          # Vite configuration (conditional base path)
-├── capacitor.config.json   # Capacitor configuration
-├── codemagic.yaml          # CI/CD pipeline configuration
-├── package.json            # NPM dependencies and scripts
-├── generate-cert.ps1       # HTTPS certificate generation
-├── show-ip.ps1             # Network IP display
-├── README.md               # Web client & Android app documentation
-├── TESTING_GUIDE.md        # Testing procedures
-├── MOBILE_TESTING.md       # Mobile testing guide
-├── ANDROID_BUILD_SUMMARY.md # Android build documentation
-└── CODEMAGIC_SETUP.md      # CI/CD setup guide
+│   │   ├── build.gradle        # Android build configuration
+│   │   └── src/main/           # Android app source
+│   ├── build.gradle            # Root Android build config
+│   ├── gradle.properties       # Gradle properties
+│   └── variables.gradle        # Android SDK versions
+├── dist/                       # Production build output
+├── node_modules/               # Dependencies
+├── index.html                  # HTML template
+├── vite.config.js              # Vite configuration (conditional base path)
+├── capacitor.config.json       # Capacitor configuration
+├── codemagic.yaml              # CI/CD pipeline configuration
+├── package.json                # NPM dependencies and scripts
+├── generate-cert.ps1           # HTTPS certificate generation
+├── show-ip.ps1                 # Network IP display
+├── README.md                   # Web client & Android app documentation
+├── TESTING_GUIDE.md            # Testing procedures
+└── MOBILE_TESTING.md           # Mobile testing guide
 ```
 
 ### Component Organization
 - Each component has paired .jsx and .css files
 - Components are self-contained and reusable
-- Custom hooks for complex logic (useBLE, useBLECapacitor, useBLEUnified)
+- Custom hooks for complex logic (useBLE, useBLECapacitor, useBLEUnified, useIoT)
 - Utility functions for data formatting and conversion
-- Platform-aware BLE abstraction layer
+- Platform-aware connection abstraction layer (IoT Core first, BLE fallback)
 - Debounced BLE notifications (max 1/second) for performance
 - Smart scanning synchronized with device wake times
+- Optimistic state management via localDesiredRef in useIoT.js
 
 ## Architecture Patterns
 
 ### Firmware
 - Component-based architecture (ESP-IDF style)
 - Event-driven BLE communication
-- State machine for connection management
-- Persistent storage with NVS
-- Deep sleep for power efficiency
+- Dual-mode connection manager (IoT Core vs BLE) with automatic fallback
+- MQTT Device Shadow for cloud state synchronization
+- Delta processing: subscribe to shadow delta, apply changes, confirm via reported state
+- Persistent storage with NVS (schedules, thresholds, certificates, reachability state)
+- Deep sleep for power efficiency (54s BLE mode, 300s IoT mode)
 
 ### Web Client
 - React functional components with hooks
 - Custom hook for BLE abstraction (useBLE for web, useBLECapacitor for Android)
-- Unified BLE interface (useBLEUnified) with automatic platform detection
+- Custom hook for IoT Core (useIoT for AWS Device Shadow communication)
+- Unified connection interface (useBLEUnified) tries IoT Core first (5s timeout), falls back to BLE
+- Optimistic state management: localDesiredRef tracks pending writes until reported confirms
+- Manual refresh only — no auto-polling or BLE notifications that overwrite UI state
+- Multi-app support: each app instance sees other apps' pending desired state
 - Component composition for UI
 - State management with useState/useEffect
 - CSS modules for scoped styling
@@ -136,10 +158,12 @@ webclient/
 ## Documentation Files
 
 - `README.md` - Main project documentation with BLE interface details
-- `BLE_SECURITY.md` - Security implementation and pairing guide
+- `README-IOTCORE.md` - AWS IoT Core integration guide
 - `SCHEDULER.md` - Detailed scheduler system documentation
+- `BATTERY_CALIBRATION.md` - Battery calibration documentation
+- `NEXT-STEPS-IOT.md` - IoT integration roadmap
+- `QUICK-IOT-TEST.md` - Quick IoT testing guide
+- `CODEMAGIC_SETUP.md` - CI/CD setup guide
 - `webclient/README.md` - Web client setup and usage
 - `webclient/TESTING_GUIDE.md` - Testing procedures
 - `webclient/MOBILE_TESTING.md` - Mobile device testing
-- `webclient/ANDROID_BUILD_SUMMARY.md` - Android build documentation
-- `webclient/CODEMAGIC_SETUP.md` - CI/CD setup guide

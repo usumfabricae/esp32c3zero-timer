@@ -4,7 +4,7 @@ inclusion: always
 
 # ESP32-C3 Timer Control - Product Overview
 
-ESP32-C3 temperature-controlled bistable relay timer with weekly scheduling capabilities and synchronized BLE connectivity.
+ESP32-C3 temperature-controlled bistable relay timer with weekly scheduling capabilities, synchronized BLE connectivity, and AWS IoT Core cloud management.
 
 ## Core Functionality
 
@@ -13,13 +13,14 @@ ESP32-C3 temperature-controlled bistable relay timer with weekly scheduling capa
 - Three operating modes per hour: High (H), Low (L), Off (O)
 - Bistable relay with H-bridge control (1-second pulse switching)
 - BLE interface for configuration and monitoring
-- Web-based control interface using Web Bluetooth API
+- AWS IoT Core Device Shadow for cloud-based state management
+- Web-based control interface using Web Bluetooth API or IoT Core
 - NTP time synchronization with CET/CEST timezone (Italy)
+- **Dual connectivity:** IoT Core (cloud) with automatic BLE fallback
 - **Synchronized power-efficient operation:**
-  - Device wakes at XX:XX:59 (1 second before each minute)
-  - Active/advertising for 6 seconds (XX:XX:59 to XX:XX:05)
-  - Deep sleep for 54 seconds (XX:XX:05 to XX:XX:59)
-  - Android app scans at XX:XX:57 for fast connection (3-5 seconds)
+  - IoT mode: 5-minute wake cycles (WiFi + MQTT sync)
+  - BLE mode: 1-minute wake cycles (XX:XX:59 to XX:XX:05)
+  - Android app scans at XX:XX:57 for fast BLE connection (3-5 seconds)
 
 ## Hardware
 
@@ -34,14 +35,17 @@ ESP32-C3 temperature-controlled bistable relay timer with weekly scheduling capa
 
 - BLE GATT server with standard Bluetooth SIG characteristics
 - Standard Battery Service (0x180F) for battery monitoring
-- Persistent storage (NVS) for schedules, thresholds, and state
+- AWS IoT Core Device Shadow for remote state synchronization
+- MQTT over TLS 1.2 with X.509 certificate authentication
+- Persistent storage (NVS) for schedules, thresholds, state, and IoT certificates
 - Manual override capability (1-hour duration, configurable)
 - Smart temperature calibration with linear regression
 - Smart battery calibration with linear regression
-- Automatic WiFi disconnect after NTP sync to save power
+- Automatic WiFi disconnect after NTP/IoT sync to save power
 - LED status indicators (red=syncing, green=synced, blue=BLE connected, yellow=low battery)
 - Centralized configuration in config.h file
 - Real-time BLE notifications for battery, temperature, and time (debounced to 1/second)
+- Connection manager with automatic IoT/BLE mode switching and hourly IoT retry
 
 ## Web Client Interface
 
@@ -54,16 +58,37 @@ React-based application for device control available on multiple platforms:
 - Temperature threshold configuration (High/Low modes)
 - Temperature sensor calibration interface
 - Battery sensor calibration interface
-- Connection status and notifications
+- IoT Core connection settings (thing name, credentials)
+- Connection status with sync time and pending commands indicator
 - Automatic reconnection for previously paired devices
 - Connect/Disconnect button with visual state indication
 - Responsive design for mobile and desktop
 - Network-accessible dev server for mobile testing
+- **Optimistic state management:**
+  - Local desired state tracking survives shadow polls
+  - Values only revert when device confirms via reported state
+  - Multiple app instances see each other's pending changes
+  - No time-based race conditions
 - **Optimized for Android 15:**
   - Debounced state updates (max 1/second)
   - No infinite CSS animations
   - Safe area insets for system bars
   - Smart scanning synchronized with device wake times
+
+### Connectivity Modes
+
+**IoT Core (Cloud):**
+- AWS IoT Device Shadow for state synchronization
+- Manual refresh only (no auto-polling) — user clicks Reload to fetch latest state
+- Writes desired state, device applies on next sync
+- Supports multiple simultaneous app instances
+- Pending commands indicator shows unconfirmed changes
+
+**BLE (Local):**
+- Direct Bluetooth LE connection to device
+- Real-time read/write of characteristics
+- Automatic reconnection with exponential backoff
+- Falls back from IoT Core on connection failure
 
 ### Platforms
 
@@ -82,7 +107,12 @@ React-based application for device control available on multiple platforms:
 
 ## Power Efficiency
 
-**ESP32 Device:**
+**ESP32 Device (IoT Mode):**
+- Sync session: 5-30 seconds every 5 minutes
+- WiFi + MQTT connect, publish state, process deltas, disconnect
+- Hourly retry from BLE mode if IoT Core unreachable
+
+**ESP32 Device (BLE Mode):**
 - Active time: 6 seconds per minute (10% duty cycle)
 - Deep sleep: 54 seconds per minute (90% duty cycle)
 - 60% reduction in active time vs previous implementation

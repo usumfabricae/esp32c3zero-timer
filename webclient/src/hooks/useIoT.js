@@ -2,12 +2,12 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { IoTDataPlaneClient, GetThingShadowCommand, UpdateThingShadowCommand } from '@aws-sdk/client-iot-data-plane';
 
 const IOT_ENDPOINT = 'azjenkdbqqlx7-ats.iot.eu-central-1.amazonaws.com';
-const SHADOW_POLL_INTERVAL = 5000; // 5 seconds
 const DEBOUNCE_INTERVAL = 1000; // 1 second max update rate
 
 /**
  * useIoT hook for AWS IoT Core Device Shadow communication.
- * Reads reported state, writes desired state, polls for updates.
+ * Reads reported state on connect and manual refresh, writes desired state.
+ * No automatic polling — data refreshes only when user clicks Reload.
  */
 export const useIoT = () => {
   const [isConnected, setIsConnected] = useState(false);
@@ -28,7 +28,6 @@ export const useIoT = () => {
   const [hasPendingCommands, setHasPendingCommands] = useState(false);
 
   const clientRef = useRef(null);
-  const pollIntervalRef = useRef(null);
   const debounceTimerRef = useRef(null);
   const pendingUpdateRef = useRef(null);
   const thingNameRef = useRef(null);
@@ -319,13 +318,6 @@ export const useIoT = () => {
       setIsConnected(true);
       setIsConnecting(false);
 
-      // Start polling for shadow updates
-      pollIntervalRef.current = setInterval(() => {
-        getDeviceShadow().catch(err => {
-          console.error('[IoT] Shadow poll failed:', err);
-        });
-      }, SHADOW_POLL_INTERVAL);
-
       console.log('[IoT] Connected to IoT Core');
     } catch (err) {
       console.error('[IoT] Connection failed:', err);
@@ -342,10 +334,6 @@ export const useIoT = () => {
    * Disconnect from AWS IoT Core
    */
   const disconnect = useCallback(async () => {
-    if (pollIntervalRef.current) {
-      clearInterval(pollIntervalRef.current);
-      pollIntervalRef.current = null;
-    }
     if (debounceTimerRef.current) {
       clearTimeout(debounceTimerRef.current);
       debounceTimerRef.current = null;
@@ -362,7 +350,6 @@ export const useIoT = () => {
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
       if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
     };
   }, []);

@@ -15,7 +15,10 @@ inclusion: always
 ### Core Libraries
 - ESP WiFi (station mode)
 - ESP Bluetooth (BLE only, Bluedroid stack)
-- NVS Flash (non-volatile storage)
+- ESP MQTT (MQTT client for AWS IoT Core)
+- ESP TLS (TLS 1.2 for MQTT connections)
+- cJSON (JSON parsing for Device Shadow)
+- NVS Flash (non-volatile storage for config, certificates, reachability state)
 - ESP ADC (temperature sensor)
 - ESP Sleep (deep sleep management with precise timing)
 - LWIP SNTP (NTP time sync)
@@ -31,17 +34,22 @@ inclusion: always
 - Centralized configuration in main/config.h
 - All user-configurable parameters in single file with detailed comments
 - WiFi credentials, device name, timings, thresholds, GPIO pins
+- AWS IoT Core endpoint, MQTT port, connection timeouts, sync intervals
 - sdkconfig system for build-time ESP-IDF configuration
 - Custom partition table (partitions.csv)
 - BLE 4.2 features enabled for ESP32-C3 Zero compatibility
+- X.509 certificates stored in NVS via cert_store module
 
 ### Power Management
-- **Synchronized timing:** Device wakes at XX:XX:59, sleeps at XX:XX:05
-- **Active period:** 6 seconds (10% duty cycle)
-- **Deep sleep:** 54 seconds (90% duty cycle)
+- **Dual-mode timing:**
+  - IoT mode: 5-minute deep sleep cycles (WiFi + MQTT sync sessions)
+  - BLE mode: 54-second deep sleep (wake at XX:XX:59, sleep at XX:XX:05)
+- **Connection manager:** Automatic IoT/BLE mode switching based on reachability
+- **IoT sync session:** Connect, publish, process deltas, disconnect (5-30 seconds)
 - Dynamic sleep calculation based on actual wake time
 - Immediate sleep entry if device wakes late
 - Light sleep with BLE active during advertising period
+- Hourly IoT Core retry when in BLE fallback mode
 
 ## Web Client & Android App
 
@@ -57,11 +65,20 @@ inclusion: always
 - @capacitor/core for native platform detection
 - @capacitor/android for Android platform
 - @capacitor-community/bluetooth-le for Android BLE
+- @aws-sdk/client-iot-data-plane for AWS IoT Device Shadow API
+- @aws-sdk/credential-providers for AWS credential management
 
 ### Architecture
 - Custom hooks pattern (useBLE.js for Web Bluetooth API, useBLECapacitor.js for Capacitor)
-- Unified BLE interface (useBLEUnified.js) with automatic platform detection
-- Component-based UI (Dashboard, TimerProgramming, TemperatureSettings)
+- IoT Core hook (useIoT.js) for AWS Device Shadow communication
+- Unified connection interface (useBLEUnified.js) tries IoT Core first (5s timeout), falls back to BLE
+- **Optimistic state management (useIoT.js):**
+  - `localDesiredRef` tracks pending writes until reported state confirms
+  - Priority chain: local desired → shadow desired → reported
+  - Survives unlimited shadow polls without reverting
+  - Multi-app: absorbs other apps' desired state from shadow
+  - No time-based race conditions (replaced 3s write protection window)
+- Component-based UI (Dashboard, TimerProgramming, TemperatureSettings, Settings)
 - CSS modules for scoped styling
 - Web Bluetooth API for browser-based BLE communication
 - Capacitor Bluetooth LE plugin for Android BLE communication
@@ -164,12 +181,21 @@ idf.py menuconfig
 
 - BLE 4.2 features must be enabled: `CONFIG_BT_BLE_42_FEATURES_SUPPORTED=y`
 - Custom partition table required for WiFi + BT libraries
-- All user configuration in main/config.h (WiFi, device name, timings, etc.)
+- All user configuration in main/config.h (WiFi, device name, timings, IoT endpoint, etc.)
 - Temperature calibration stored in NVS
+- IoT Core X.509 certificates stored in NVS via cert_store
 - **Timing configuration:**
   - `LIGHT_SLEEP_DURATION_SEC = 6` (fallback only)
-  - `DEEP_SLEEP_DURATION_SEC = 54` (calculated dynamically)
+  - `DEEP_SLEEP_DURATION_SEC = 54` (BLE mode, calculated dynamically)
+  - `IOT_DEEP_SLEEP_DURATION_SEC = 300` (IoT mode, 5 minutes)
   - `BLE_ADVERTISING_TIMEOUT_SEC = 6`
+- **IoT Core configuration:**
+  - `IOT_CORE_ENABLED = 1` (set to 0 for BLE-only mode)
+  - `IOT_ENDPOINT` - AWS IoT Core endpoint URL
+  - `IOT_MQTT_PORT = 8883` (MQTT over TLS)
+  - `IOT_CONNECTION_TIMEOUT_SEC = 10` (fail-fast)
+  - `IOT_SYNC_TIMEOUT_SEC = 30` (max sync session duration)
+  - `IOT_RETRY_INTERVAL_SEC = 3600` (hourly retry from BLE mode)
 
 ### Android Build Configuration
 - Android Gradle Plugin 8.13.0 (requires Java 21)
@@ -181,11 +207,23 @@ idf.py menuconfig
 
 ## Performance Optimizations
 
-### ESP32 Firmware
+### ESP32 Firmware (BLE Mode)
 - Precise timing: Wake at XX:XX:59, sleep at XX:XX:05
 - Dynamic sleep calculation compensates for late wakes
 - Immediate sleep entry if past target time
 - 60% reduction in active time (6s vs 10s per minute)
+
+### ESP32 Firmware (IoT Mode)
+- Brief sync sessions: connect, publish, process deltas, disconnect (5-30s)
+- 5-minute deep sleep between syncs
+- Automatic fallback to BLE mode on IoT Core unreachability
+- Hourly retry to recover IoT Core connectivity
+
+### Web Client (IoT Core)
+- Manual refresh only — no auto-polling, user clicks Reload to fetch shadow
+- Debounced shadow writes (max 1/second) to prevent flooding
+- Optimistic UI updates via localDesiredRef (no flickering or reverting)
+- Multi-app consistency: desired state visible across all app instances
 
 ### Android App
 - Smart scanning: Starts at XX:XX:57 (synchronized with device)

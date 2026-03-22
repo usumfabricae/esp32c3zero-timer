@@ -107,14 +107,6 @@ function App() {
         }
       }
 
-      // Enable notifications for temperature and time
-      try {
-        await ble.setupNotifications();
-      } catch (notifError) {
-        console.warn('[App] Failed to set up notifications:', notifError);
-        // Continue anyway - notifications are optional
-      }
-
       // Show connected status
       setGlobalNotification({
         type: 'success',
