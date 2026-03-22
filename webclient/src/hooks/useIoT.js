@@ -188,28 +188,14 @@ export const useIoT = () => {
   }, [convertScheduleToArray, mergeDesired, isConfirmed]);
 
   /**
-   * Detect pending commands by checking local desired state and shadow desired.
-   * Commands are pending if localDesiredRef has any keys (not yet confirmed)
-   * or if shadow desired differs from reported.
+   * Detect pending commands by checking local desired state.
+   * Commands are pending only if localDesiredRef has keys not yet confirmed by reported.
+   * Shadow desired vs reported comparison is unreliable because AWS doesn't auto-clear
+   * desired after the device confirms, and fields like 'ts' or 'calibration' may linger.
    */
-  const checkPendingCommands = useCallback((shadow) => {
-    // Local desired entries that haven't been confirmed yet
+  const checkPendingCommands = useCallback(() => {
     const hasLocalPending = Object.keys(localDesiredRef.current).length > 0;
-    if (hasLocalPending) {
-      setHasPendingCommands(true);
-      return;
-    }
-
-    const reported = shadow?.state?.reported;
-    const desired = shadow?.state?.desired;
-    if (!desired || Object.keys(desired).length === 0) {
-      setHasPendingCommands(false);
-      return;
-    }
-    const pending = Object.keys(desired).some(key => {
-      return JSON.stringify(desired[key]) !== JSON.stringify(reported?.[key]);
-    });
-    setHasPendingCommands(pending);
+    setHasPendingCommands(hasLocalPending);
   }, []);
 
   /**
@@ -224,14 +210,15 @@ export const useIoT = () => {
       const payload = JSON.parse(new TextDecoder().decode(response.payload));
 
       // Extract last sync time from metadata
-      const metaTimestamp = payload?.metadata?.reported?.timestamp;
-      if (metaTimestamp) {
-        // Shadow metadata timestamps are Unix epoch seconds
+      // Shadow metadata structure: metadata.reported.<field>.timestamp
+      // The 'timestamp' field's metadata contains when it was last updated
+      const metaTimestamp = payload?.metadata?.reported?.timestamp?.timestamp;
+      if (metaTimestamp && typeof metaTimestamp === 'number') {
         setLastSyncTime(new Date(metaTimestamp * 1000));
       }
 
       parseShadowState(payload?.state?.reported, payload?.state?.desired);
-      checkPendingCommands(payload);
+      checkPendingCommands();
 
       return payload;
     } catch (err) {
