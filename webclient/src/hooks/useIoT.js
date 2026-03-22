@@ -412,25 +412,14 @@ export const useIoT = () => {
     });
   }, [updateDeviceShadow]);
 
-  // In IoT mode, read operations re-fetch the shadow from AWS.
-  // We use a ref to avoid multiple concurrent fetches when Dashboard
-  // calls all reads in Promise.all — only the first triggers a fetch.
-  const shadowFetchPromiseRef = useRef(null);
-  const refreshShadow = useCallback(async () => {
-    if (!shadowFetchPromiseRef.current) {
-      shadowFetchPromiseRef.current = getDeviceShadow().finally(() => {
-        shadowFetchPromiseRef.current = null;
-      });
-    }
-    return shadowFetchPromiseRef.current;
-  }, [getDeviceShadow]);
-
-  const readTemperature = useCallback(async () => { await refreshShadow(); return deviceData.temperature; }, [refreshShadow, deviceData.temperature]);
-  const readCurrentTime = useCallback(async () => { await refreshShadow(); return deviceData.currentTime; }, [refreshShadow, deviceData.currentTime]);
-  const readRelayState = useCallback(async () => { await refreshShadow(); return { state: deviceData.relayState, overrideEndTime: deviceData.relayOverrideEndTime }; }, [refreshShadow, deviceData.relayState, deviceData.relayOverrideEndTime]);
-  const readSchedule = useCallback(async () => { await refreshShadow(); return deviceData.schedule; }, [refreshShadow, deviceData.schedule]);
-  const readTemperatureThresholds = useCallback(async () => { await refreshShadow(); return deviceData.thresholds; }, [refreshShadow, deviceData.thresholds]);
-  const readBatteryLevel = useCallback(async () => { await refreshShadow(); return deviceData.batteryLevel; }, [refreshShadow, deviceData.batteryLevel]);
+  // In IoT mode, read operations return cached data from the last shadow fetch.
+  // Use getDeviceShadow() directly to refresh (e.g., from Reload button).
+  const readTemperature = useCallback(async () => deviceData.temperature, [deviceData.temperature]);
+  const readCurrentTime = useCallback(async () => deviceData.currentTime, [deviceData.currentTime]);
+  const readRelayState = useCallback(async () => ({ state: deviceData.relayState, overrideEndTime: deviceData.relayOverrideEndTime }), [deviceData.relayState, deviceData.relayOverrideEndTime]);
+  const readSchedule = useCallback(async () => deviceData.schedule, [deviceData.schedule]);
+  const readTemperatureThresholds = useCallback(async () => deviceData.thresholds, [deviceData.thresholds]);
+  const readBatteryLevel = useCallback(async () => deviceData.batteryLevel, [deviceData.batteryLevel]);
   const readWifiSsid = useCallback(async () => deviceData.wifiSsid, [deviceData.wifiSsid]);
   const writeWifiSsid = useCallback(async () => {}, []);
   const writeWifiPassword = useCallback(async () => {}, []);

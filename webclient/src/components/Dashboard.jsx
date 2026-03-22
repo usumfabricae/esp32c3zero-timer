@@ -115,17 +115,22 @@ function Dashboard({ ble }) {
     });
 
     try {
-      // Read all data from device
-      await Promise.all([
-        ble.readTemperature(),
-        ble.readRelayState(),
-        ble.readSchedule(),
-        ble.readTemperatureThresholds(),
-        ble.readBatteryLevel().catch(err => {
-          console.warn('[Dashboard] Battery level not available:', err);
-          return null;
-        })
-      ]);
+      // In IoT mode, re-fetch the shadow directly.
+      // In BLE mode, read each characteristic individually.
+      if (ble.connectionMethod === 'iot') {
+        await ble.getDeviceShadow();
+      } else {
+        await Promise.all([
+          ble.readTemperature(),
+          ble.readRelayState(),
+          ble.readSchedule(),
+          ble.readTemperatureThresholds(),
+          ble.readBatteryLevel().catch(err => {
+            console.warn('[Dashboard] Battery level not available:', err);
+            return null;
+          })
+        ]);
+      }
 
       setNotification({
         type: 'success',
