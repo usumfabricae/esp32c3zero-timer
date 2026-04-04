@@ -5,10 +5,13 @@ function Settings({
   isConnected, 
   wifiSsid,
   connectionMethod,
+  deviceData,
   onUpdateWifiSsid,
   onUpdateWifiPassword,
   onUpdateBlePasskey,
-  onConfigureIoT
+  onConfigureIoT,
+  onCalibrateTemperature,
+  onCalibrateBattery
 }) {
   const [ssid, setSsid] = useState('');
   const [password, setPassword] = useState('');
@@ -16,6 +19,10 @@ function Settings({
   const [showPassword, setShowPassword] = useState(false);
   const [showPasskey, setShowPasskey] = useState(false);
   const [notification, setNotification] = useState(null);
+
+  // Calibration state
+  const [calibrationTemp, setCalibrationTemp] = useState('');
+  const [batteryCalibration, setBatteryCalibration] = useState('');
 
   // IoT credential state
   const [iotThingName, setIotThingName] = useState('');
@@ -167,6 +174,136 @@ function Settings({
     showNotification('IoT Core credentials cleared. Device will use BLE only.');
   };
 
+  // --- Calibration handlers ---
+
+  const handleCalibrateTemperature = async () => {
+    const value = parseFloat(calibrationTemp);
+    if (isNaN(value)) {
+      showNotification('Please enter a valid calibration temperature', 'error');
+      return;
+    }
+    try {
+      await onCalibrateTemperature(value);
+      setCalibrationTemp('');
+      showNotification('Temperature sensor calibrated successfully');
+    } catch (error) {
+      showNotification(`Failed to calibrate sensor: ${error.message}`, 'error');
+    }
+  };
+
+  const handleResetTemperatureCalibration = async () => {
+    try {
+      await onCalibrateTemperature(-999);
+      showNotification('Temperature calibration reset successfully');
+    } catch (error) {
+      showNotification(`Failed to reset calibration: ${error.message}`, 'error');
+    }
+  };
+
+  const handleCalibrateBattery = async () => {
+    const value = parseFloat(batteryCalibration);
+    if (isNaN(value)) {
+      showNotification('Please enter a valid battery voltage in millivolts', 'error');
+      return;
+    }
+    if (value < 2500 || value > 4500) {
+      showNotification('Battery voltage must be between 2500mV and 4500mV', 'error');
+      return;
+    }
+    try {
+      await onCalibrateBattery(value);
+      setBatteryCalibration('');
+      showNotification('Battery sensor calibrated successfully');
+    } catch (error) {
+      showNotification(`Failed to calibrate battery: ${error.message}`, 'error');
+    }
+  };
+
+  const handleResetBatteryCalibration = async () => {
+    try {
+      await onCalibrateBattery(-1);
+      showNotification('Battery calibration reset successfully');
+    } catch (error) {
+      showNotification(`Failed to reset battery calibration: ${error.message}`, 'error');
+    }
+  };
+
+  const calibrationSections = (
+    <>
+      <div className="settings-section">
+        <h3>🌡️ Temperature Calibration</h3>
+        <p className="settings-description">
+          Calibrate the temperature sensor by entering the actual temperature.
+        </p>
+        <div className="settings-field">
+          <label htmlFor="calibration-temp">Actual Temperature (°C)</label>
+          <input
+            id="calibration-temp"
+            type="number"
+            step="0.1"
+            value={calibrationTemp}
+            onChange={(e) => setCalibrationTemp(e.target.value)}
+            disabled={!isConnected}
+            placeholder="e.g., 20.5"
+          />
+        </div>
+        <div className="settings-input-group" style={{ marginTop: '16px' }}>
+          <button
+            onClick={handleCalibrateTemperature}
+            className="settings-button"
+            disabled={!isConnected || !calibrationTemp}
+          >
+            Calibrate
+          </button>
+          <button
+            onClick={handleResetTemperatureCalibration}
+            className="settings-button settings-button-danger"
+            disabled={!isConnected}
+          >
+            Reset Calibration
+          </button>
+        </div>
+      </div>
+
+      <div className="settings-section">
+        <h3>🔋 Battery Calibration</h3>
+        <p className="settings-description">
+          Calibrate the battery sensor by entering the actual battery voltage in millivolts.
+          Current battery: {deviceData?.batteryVoltage ? `${deviceData.batteryVoltage}mV (${deviceData.batteryLevel}%)` : 'N/A'}
+        </p>
+        <div className="settings-field">
+          <label htmlFor="calibration-battery">Actual Battery Voltage (mV)</label>
+          <input
+            id="calibration-battery"
+            type="number"
+            step="1"
+            value={batteryCalibration}
+            onChange={(e) => setBatteryCalibration(e.target.value)}
+            disabled={!isConnected}
+            placeholder="e.g., 4200"
+          />
+          <span className="settings-hint">Typical range: 3000mV (empty) to 4200mV (full)</span>
+        </div>
+        <div className="settings-input-group" style={{ marginTop: '16px' }}>
+          <button
+            onClick={handleCalibrateBattery}
+            className="settings-button"
+            disabled={!isConnected || !batteryCalibration}
+          >
+            Calibrate
+          </button>
+          <button
+            onClick={handleResetBatteryCalibration}
+            className="settings-button settings-button-danger"
+            disabled={!isConnected}
+          >
+            Reset Calibration
+          </button>
+        </div>
+      </div>
+    </>
+  );
+
   const iotConfigSection = (
     <div className="settings-section">
       <h3>☁️ AWS IoT Core</h3>
@@ -282,7 +419,7 @@ function Settings({
         {iotConfigSection}
 
         <div className="settings-disconnected">
-          <p>Connect to device to access WiFi and BLE settings</p>
+          <p>Connect to device to access calibration, WiFi, and BLE settings</p>
         </div>
       </div>
     );
@@ -297,6 +434,8 @@ function Settings({
           {notification.message}
         </div>
       )}
+
+      {calibrationSections}
 
       <div className="settings-section">
         <h3>WiFi Configuration</h3>

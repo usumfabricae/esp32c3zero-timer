@@ -279,10 +279,13 @@ function App() {
             isConnected={ble.isConnected}
             wifiSsid={ble.deviceData.wifiSsid}
             connectionMethod={ble.connectionMethod}
+            deviceData={ble.deviceData}
             onUpdateWifiSsid={ble.writeWifiSsid}
             onUpdateWifiPassword={ble.writeWifiPassword}
             onUpdateBlePasskey={ble.writeBlePasskey}
             onConfigureIoT={ble.configureIoT}
+            onCalibrateTemperature={ble.writeTemperatureCalibration}
+            onCalibrateBattery={ble.writeBatteryCalibration}
           />
         )}
       </main>

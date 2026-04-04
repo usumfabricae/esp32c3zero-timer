@@ -759,9 +759,11 @@ esp_err_t gpio_calibrate_battery_voltage(uint16_t actual_voltage_mv)
         return ESP_FAIL;
     }
 
-    // Check if we already have a point very close to this voltage (within 100mV)
+    // Check if we already have a point very close to this voltage (within 30mV)
+    // Note: Battery lookup table steps are as small as 60mV (e.g. 3790->3730),
+    // so 100mV threshold was too aggressive and merged distinct calibration points
     for (int i = 0; i < batt_cal_point_count; i++) {
-        if (abs(batt_cal_points[i].actual_voltage_mv - actual_voltage_mv) <= 100) {
+        if (abs(batt_cal_points[i].actual_voltage_mv - actual_voltage_mv) <= 30) {
             // Update existing point
             ESP_LOGI(GPIO_TAG, "Updating existing battery calibration point: %dmV@%dmV -> %dmV@%dmV",
                      batt_cal_points[i].actual_voltage_mv, batt_cal_points[i].sensor_voltage_mv,

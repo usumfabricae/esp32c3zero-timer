@@ -16,7 +16,22 @@ export const useBLEUnified = () => {
   const iot = useIoT();
 
   const [connectionMethod, setConnectionMethod] = useState(null);
-  const [iotConfig, setIotConfig] = useState(null);
+  const [iotConfig, setIotConfig] = useState(() => {
+    // Load saved IoT config from localStorage on init so Connect works
+    // without visiting Settings first
+    try {
+      const saved = localStorage.getItem('iot_config');
+      if (saved) {
+        const config = JSON.parse(saved);
+        if (config.thingName && config.credentials?.accessKeyId && config.credentials?.secretAccessKey) {
+          return config;
+        }
+      }
+    } catch (e) {
+      console.warn('[Unified] Failed to load saved IoT config:', e);
+    }
+    return null;
+  });
 
   // Determine which interface is currently active
   const active = connectionMethod === 'iot' ? iot : ble;
